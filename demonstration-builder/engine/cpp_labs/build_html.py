@@ -16,6 +16,7 @@ yield a single variant.
 
 from __future__ import annotations
 
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -24,6 +25,23 @@ from typing import Any
 from .code_generator import ControlDef, TopicTemplate, generate_source
 from .compiler_runner import compile_and_run, parse_membytes, parse_ptrdata_all
 from .html_renderer import assemble_page, render_fragment, svg_renderer
+
+
+# ---------------------------------------------------------------------------
+# Console scrubbing
+# ---------------------------------------------------------------------------
+
+# The instrumented programs print ``MEMBYTES:`` / ``PTRDATA:`` marker lines so the
+# engine can parse them (see parse_membytes / parse_ptrdata_all) and build the
+# memory / stack-frame diagram. Those lines — and the raw addresses they carry —
+# are backstage data for the diagram, not part of the program's real output, so
+# they must be stripped from the stdout shown to the student.
+_MARKER_LINE_RE = re.compile(r"^[ \t]*(?:MEMBYTES|PTRDATA):.*(?:\r?\n|$)", re.MULTILINE)
+
+
+def _display_stdout(stdout: str) -> str:
+    """Return program stdout with the diagram-feed marker lines removed."""
+    return _MARKER_LINE_RE.sub("", stdout)
 
 
 # ---------------------------------------------------------------------------
@@ -170,7 +188,7 @@ def _compile_one(
             "ptrdata": ptrdata,
             "ptrdata_steps": parse_ptrdata_all(result.stdout),
             "svg": svg_renderer(ptrdata),
-            "stdout": result.stdout,
+            "stdout": _display_stdout(result.stdout),
             "membytes": result.memory_bytes or parse_membytes(result.stdout) or "n/a",
             "failed": True,
             "error_kind": "runtime",
@@ -185,7 +203,7 @@ def _compile_one(
         "ptrdata": ptrdata,
         "ptrdata_steps": parse_ptrdata_all(result.stdout),
         "svg": svg_renderer(ptrdata),
-        "stdout": result.stdout,
+        "stdout": _display_stdout(result.stdout),
         "membytes": membytes,
         "failed": False,
         "error_kind": None,
