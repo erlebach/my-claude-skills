@@ -118,6 +118,89 @@ def parse_ptrdata_all(stdout: str) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# GAUGE parsing
+# ---------------------------------------------------------------------------
+
+_GAUGE_RE = re.compile(r"^\s*GAUGE:(.+)$", re.MULTILINE)
+
+
+def parse_gauge_all(stdout: str) -> list[dict]:
+    """Extract every ``GAUGE:<series>:<value>[/<max>]:<label>`` line from
+    ``stdout`` in source order, for the step_gauge "fuel bar" widget.
+
+    Returns a list of ``{series, value:int, max:int|None, label:str}``. Only the
+    first three colons are delimiters, so ``label`` may itself contain colons.
+    ``<max>`` is optional: present when the program prints a real reference (e.g.
+    a vector's ``capacity()``), omitted when the track should be the sequence
+    peak (e.g. ``use_count``). Malformed lines (non-integer value/max) are
+    skipped. Mirrors :func:`parse_ptrdata_all`; empty list if none.
+    """
+    steps: list[dict] = []
+    for match in _GAUGE_RE.finditer(stdout):
+        parts = match.group(1).split(":", 2)   # series, valuespec, label
+        if len(parts) != 3:
+            continue
+        series, valuespec, label = parts
+        vtxt, sep, mtxt = valuespec.strip().partition("/")
+        try:
+            value = int(vtxt.strip())
+            vmax = int(mtxt.strip()) if sep else None
+        except ValueError:
+            continue
+        steps.append({"series": series.strip(), "value": value,
+                      "max": vmax, "label": label.strip()})
+    return steps
+
+
+# ---------------------------------------------------------------------------
+# perf_chart parsing (reads DISPLAYED stdout, not a stripped marker line)
+# ---------------------------------------------------------------------------
+
+
+class PerfChartError(ValueError):
+    """A perf_chart regex matched nothing, or a required value was non-numeric.
+
+    Raised so a drifted author regex fails the build loudly instead of silently
+    rendering an empty chart.
+    """
+
+
+def parse_perf_chart(display_stdout: str, spec: dict) -> list[dict]:
+    """Extract chart points from *display_stdout* using the author's regex.
+
+    spec: ``{"mode": "bar"|"line"|"scatter", "match": <regex str>}``.
+      - bar        : regex yields named groups ``label`` (str) and ``y`` (numeric).
+      - line/scatter: regex yields named groups ``x`` and ``y`` (numeric); optional
+        ``series`` group assigns each point to a named curve.
+    finditer -> points in source order (mirrors parse_gauge_all). ``raw`` is the
+    exact matched substring, so the hover value matches the console verbatim.
+    """
+    mode = spec.get("mode", "bar")
+    pattern = re.compile(spec["match"], re.MULTILINE)
+    points: list[dict] = []
+    for m in pattern.finditer(display_stdout):
+        gd = m.groupdict()
+        try:
+            if mode in ("line", "scatter"):
+                pt = {"x": float(gd["x"]), "y": float(gd["y"]), "raw": m.group(0)}
+                if gd.get("series") is not None:
+                    pt["series"] = gd["series"]
+                points.append(pt)
+            else:  # bar
+                points.append({"label": (gd.get("label") or "").strip(),
+                               "y": float(gd["y"]), "raw": m.group(0)})
+        except (KeyError, TypeError, ValueError) as exc:
+            raise PerfChartError(
+                f"perf_chart {mode}: bad/missing numeric group in {m.group(0)!r}"
+            ) from exc
+    if not points:
+        raise PerfChartError(
+            f"perf_chart: regex {spec['match']!r} matched nothing in stdout"
+        )
+    return points
+
+
+# ---------------------------------------------------------------------------
 # g++ probe
 # ---------------------------------------------------------------------------
 

@@ -7,6 +7,7 @@ is a thin re-export shim that calls :func:`load_topics` with its own topics dir.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import yaml
@@ -32,6 +33,50 @@ def _case(d: dict) -> CaseDef:
     return CaseDef(label=d["label"], subs=dict(d.get("subs", {})))
 
 
+def _flag_variant(d: dict) -> dict:
+    """Normalize one flag_variants entry to {"label", "flags"}.
+
+    ``flags`` is required; ``label`` defaults to the flags joined by a space so
+    a topic can write ``- flags: ["-O2"]`` and get a ``-O2`` tab for free.
+    """
+    flags = list(d["flags"])
+    return {"label": d.get("label") or " ".join(flags), "flags": flags}
+
+
+_PC_REQUIRED_GROUPS = {"bar": ("label", "y"), "line": ("x", "y"), "scatter": ("x", "y")}
+
+
+def _validate_perf_chart(block: dict, topic_id: str) -> dict:
+    """Validate a perf_chart: block; raise ValueError on authoring mistakes."""
+    for chart_id, spec in block.items():
+        mode = spec.get("mode", "bar")
+        if mode not in _PC_REQUIRED_GROUPS:
+            raise ValueError(
+                f"topic {topic_id!r} perf_chart {chart_id!r}: mode must be "
+                f"'bar', 'line', or 'scatter', got {mode!r}")
+        src = spec.get("from")
+        if src and src not in ("variants", "flag_variants"):
+            raise ValueError(
+                f"topic {topic_id!r} perf_chart {chart_id!r}: from must be "
+                f"'variants' or 'flag_variants', got {src!r}")
+        if "match" not in spec:
+            raise ValueError(
+                f"topic {topic_id!r} perf_chart {chart_id!r}: missing 'match' regex")
+        try:
+            groups = re.compile(spec["match"]).groupindex
+        except re.error as exc:
+            raise ValueError(
+                f"topic {topic_id!r} perf_chart {chart_id!r}: bad regex: {exc}") from exc
+        for g in _PC_REQUIRED_GROUPS[mode]:
+            if g == "label" and spec.get("from"):
+                continue
+            if g not in groups:
+                raise ValueError(
+                    f"topic {topic_id!r} perf_chart {chart_id!r}: {mode} regex "
+                    f"must have a named group (?P<{g}>…)")
+    return block
+
+
 def _topic(d: dict) -> TopicTemplate:
     for key in _REQUIRED:
         if key not in d:
@@ -52,6 +97,27 @@ def _topic(d: dict) -> TopicTemplate:
                 f"topic {d.get('id', '?')!r} has duplicate standards {standards}; "
                 f"each standard must appear at most once (it becomes one tab)"
             )
+    perf_chart = _validate_perf_chart(d.get("perf_chart") or {}, d.get("id", "?"))
+    flag_variants = [_flag_variant(f) for f in d.get("flag_variants", [])]
+    if flag_variants:
+        dropdowns = [c.id for c in controls if c.kind == "dropdown"]
+        if dropdowns:
+            raise ValueError(
+                f"topic {d.get('id', '?')!r} uses flag_variants but also has "
+                f"dropdown control(s) {dropdowns}; a flag-variant axis owns the "
+                f"tab row and may not compete with a dropdown"
+            )
+        if standards:
+            raise ValueError(
+                f"topic {d.get('id', '?')!r} sets both standards and "
+                f"flag_variants; a topic tabs on ONE compiler axis, not both"
+            )
+        labels = [f["label"] for f in flag_variants]
+        if len(set(labels)) != len(labels):
+            raise ValueError(
+                f"topic {d.get('id', '?')!r} has duplicate flag_variant labels "
+                f"{labels}; each label becomes one tab and must be unique"
+            )
     return TopicTemplate(
         id=d["id"],
         name=d["name"],
@@ -62,11 +128,16 @@ def _topic(d: dict) -> TopicTemplate:
         target_var=d.get("target_var", "x"),
         sanitize=d.get("sanitize", False),
         has_ptrdata=d.get("has_ptrdata", True),
+        byte_decode=d.get("byte_decode", ""),
+        byte_label=d.get("byte_label", ""),
         doc_url=d.get("doc_url", ""),
         cases=[_case(c) for c in cases] if cases else None,
         extra_compile_flags=list(d.get("extra_compile_flags", [])),
         standards=standards,
+        flag_variants=flag_variants,
+        perf_chart=perf_chart,
     )
+
 
 
 def load_topics(topics_dir: Path) -> dict[str, TopicTemplate]:

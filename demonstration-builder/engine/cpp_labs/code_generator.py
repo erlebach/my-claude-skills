@@ -65,10 +65,26 @@ class TopicTemplate:
     target_var: str = "x"
     sanitize: bool = False
     has_ptrdata: bool = True
+    # byte_grid decode mode for this topic's raw-byte dump. "" keeps the default
+    # per-byte char row; "int32" replaces it with a grouped (4-byte) row of
+    # decoded little-endian ints — legible for numeric arrays, where the char
+    # row is noise. See components.byte_grid.
+    byte_decode: str = ""
+    # Human label for the byte_grid caption — "Raw bytes of <byte_label>". Empty
+    # falls back to target_var (the dumped variable's name). Set it to disambiguate
+    # scope when the bare name is not enough, e.g. "arr (the int* parameter of show)".
+    byte_label: str = ""
     doc_url: str = ""
     cases: list[CaseDef] | None = None
     extra_compile_flags: list[str] = field(default_factory=list)
     standards: list[int] = field(default_factory=list)
+    # Output-flag tabs: each entry is {"label": str, "flags": list[str]}. The
+    # engine fans out one tab per entry, compiling the SAME source with that
+    # entry's flags (e.g. -O0 vs -O2). Mirrors ``standards``/``__std__``.
+    flag_variants: list[dict] = field(default_factory=list)
+    # Performance chart spec: keyed by chart id; each entry has mode, match,
+    # y/x axis specs. Populated and validated by topic_yaml._validate_perf_chart.
+    perf_chart: dict = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------

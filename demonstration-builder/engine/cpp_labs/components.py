@@ -34,7 +34,9 @@ from .html_renderer import (
     _CSS,
     SEMANTIC_PALETTE,
     svg_renderer,
+    _svg_boxchain,
     _svg_frames_anatomy,
+    _svg_perf_chart,
     _parse_frames,
     _frames_core,
 )
@@ -67,6 +69,101 @@ _MONO_TOGGLE_CSS = (
     "outline-offset:2px}\n"
     ".mono-cb:checked ~ header .mono-toggle{background:var(--accent);color:#fff}\n"
     ".mono-cb:checked ~ main .hljs span{color:inherit !important}\n"
+)
+
+# Tri-link (code<->console<->diagram): highlight every element sharing a key
+# with the hovered/focused one, scoped to one demo variant. Pure enhancement —
+# the outline/stroke change (never colour alone) is the only visual; all a11y
+# rides on static ARIA + focus (see console_line_link / _svg_boxchain).
+_CLL_CSS = (
+    ".cll-lit { outline:3px solid var(--c-link); outline-offset:-3px;"
+    " background:#f3edff; }\n"
+    ".cll-lit rect, rect.cll-lit { stroke:var(--c-link); stroke-width:3; }\n"
+)
+_CLL_JS = (
+    "(function(){\n"
+    "function grp(el){var s=el.closest('[data-cll-scope]');"
+    "return s?s.getAttribute('data-cll-scope'):null;}\n"
+    "function keys(el){return (el.getAttribute('data-cll')||'').split(/\\s+/)"
+    ".filter(Boolean);}\n"
+    "function box(el){return el.classList.contains('cll-node');}\n"
+    "function paint(el,on){var sc=grp(el);if(sc===null)return;var ks=keys(el);"
+    "if(!ks.length)return;var eb=box(el);\n"
+    "document.querySelectorAll('[data-cll-scope=\"'+sc+'\"] [data-cll]')"
+    ".forEach(function(t){var tb=box(t);\n"
+    # A line-key (l<i>) links code<->console freely; a value-key (v<N>) lights a
+    # target only when a diagram box is one endpoint -- so two output lines that
+    # merely share a printed value never light each other (code<->console stays
+    # line-precise; value-keys drive the box dimension only).
+    "if(tk_hit(ks,keys(t),eb,tb))t.classList.toggle('cll-lit',on);});}\n"
+    "function tk_hit(ks,tk,eb,tb){return tk.some(function(k){"
+    "return ks.indexOf(k)>-1&&(k.charAt(0)==='l'||eb||tb);});}\n"
+    "function on(e){var el=e.target.closest('[data-cll]');if(el)paint(el,true);}\n"
+    "function off(e){var el=e.target.closest('[data-cll]');if(el)paint(el,false);}\n"
+    "document.addEventListener('pointerover',on);"
+    "document.addEventListener('pointerout',off);\n"
+    "document.addEventListener('focusin',on);"
+    "document.addEventListener('focusout',off);\n"
+    "})();\n"
+    # R1: recompute line/scatter coordinates client-side on axis toggle. Reads
+    # each marker's raw data-x/data-y and the <g>'s embedded plot geometry;
+    # ranges are recomputed from the markers (as the bar handler recomputes hi).
+    # log lo = smallest positive value (fallback 1); linear lo = min.
+    "function pcLine(g, axis, scale){\n"
+    "  g.setAttribute('data-pc-'+axis+'scale', scale);\n"
+    "  var L=+g.getAttribute('data-l'), R=+g.getAttribute('data-r'),\n"
+    "      T=+g.getAttribute('data-t'), B=+g.getAttribute('data-b');\n"
+    "  var xsc=g.getAttribute('data-pc-xscale'), ysc=g.getAttribute('data-pc-yscale');\n"
+    "  var pts=[].slice.call(g.querySelectorAll('.pc-pt'));\n"
+    "  function rng(getter, sc){ var vs=pts.map(getter);\n"
+    "    var hi=Math.max.apply(null,vs);\n"
+    "    if(sc==='log'){ var pos=vs.filter(function(v){return v>0;});\n"
+    "      var lo=pos.length?Math.min.apply(null,pos):1; return [lo, Math.max(hi, lo*10)]; }\n"
+    "    return [Math.min.apply(null,vs), hi]; }\n"
+    "  function frac(v, lo, hi, sc){ if(sc==='log'){ v=Math.max(v,lo);\n"
+    "      return (Math.log10(v)-Math.log10(lo))/((Math.log10(hi)-Math.log10(lo))||1);}\n"
+    "    return (v-lo)/((hi-lo)||1); }\n"
+    "  var xr=rng(function(p){return +p.getAttribute('data-x');}, xsc);\n"
+    "  var yr=rng(function(p){return +p.getAttribute('data-y');}, ysc);\n"
+    "  function PX(x){ return L + frac(x, xr[0], xr[1], xsc)*(R-L); }\n"
+    "  function PY(y){ return B - frac(y, yr[0], yr[1], ysc)*(B-T); }\n"
+    "  pts.forEach(function(p){ p.setAttribute('cx', PX(+p.getAttribute('data-x')).toFixed(1));\n"
+    "    p.setAttribute('cy', PY(+p.getAttribute('data-y')).toFixed(1)); });\n"
+    "  var lines={};\n"
+    "  pts.forEach(function(p){ var s=p.getAttribute('data-series')||'';\n"
+    "    (lines[s]=lines[s]||[]).push(PX(+p.getAttribute('data-x')).toFixed(1)+','+PY(+p.getAttribute('data-y')).toFixed(1)); });\n"
+    "  [].slice.call(g.querySelectorAll('.pc-line')).forEach(function(pl){\n"
+    "    var s=pl.getAttribute('data-series')||''; if(lines[s]) pl.setAttribute('points', lines[s].join(' ')); });\n"
+    "  [].slice.call(g.querySelectorAll('.pc-xtick')).forEach(function(t){ t.setAttribute('x', PX(+t.getAttribute('data-x')).toFixed(1)); });\n"
+    "  [].slice.call(g.querySelectorAll('.pc-ytick')).forEach(function(t){ t.setAttribute('y', PY(+t.getAttribute('data-y')).toFixed(1)); });\n"
+    "  [].slice.call(g.querySelectorAll('.pc-xgrid')).forEach(function(l){ var x=PX(+l.getAttribute('data-x')).toFixed(1); l.setAttribute('x1',x); l.setAttribute('x2',x); });\n"
+    "  [].slice.call(g.querySelectorAll('.pc-ygrid')).forEach(function(l){ var y=PY(+l.getAttribute('data-y')).toFixed(1); l.setAttribute('y1',y); l.setAttribute('y2',y); });\n"
+    "}\n"
+    "document.addEventListener('click',function(e){\n"
+    "  var b=e.target.closest('[data-pc-toggle]'); if(!b) return;\n"
+    "  var scale=b.getAttribute('data-pc-toggle');\n"
+    "  var g=b.closest('.pc-fig').querySelector('[data-pc]');\n"
+    "  var grp=b.parentNode; if(grp){var bs=grp.querySelectorAll('[data-pc-toggle]');\n"
+    "    for(var i=0;i<bs.length;i++){bs[i].setAttribute('aria-pressed', bs[i]===b ? 'true':'false');}}\n"
+    "  if(g.querySelector('.pc-pt')){ pcLine(g, b.getAttribute('data-pc-axis'), scale); return; }\n"
+    "  var bars=[].slice.call(g.querySelectorAll('.pc-bar'));\n"
+    "  var ys=bars.map(function(r){return parseFloat(r.getAttribute('data-y'));});\n"
+    "  var top=24, bot=240, hi=Math.max.apply(null,ys);\n"
+    "  var lo=(scale==='log')?1:0;\n"
+    "  function frac(v){ if(scale==='log'){v=Math.max(v,lo);\n"
+    "      return (Math.log10(v)-Math.log10(lo))/((Math.log10(hi)-Math.log10(lo))||1);}\n"
+    "    return (v-lo)/((hi-lo)||1); }\n"
+    "  bars.forEach(function(r,i){ var h=Math.max(2,Math.round(frac(ys[i])*(bot-top)));\n"
+    "    r.setAttribute('height',h); r.setAttribute('y',bot-h); });\n"
+    "  g.setAttribute('data-pc-scale',scale);\n"
+    "});\n"
+    # Hover readout: show the hovered bar's verbatim console substring (data-raw)
+    # in the chart's .pc-tip text; clear it on mouseout.
+    "function pctip(e,show){var r=e.target.closest('.pc-bar,.pc-pt');if(!r)return;\n"
+    "  var g=r.closest('[data-pc]');if(!g)return;var t=g.querySelector('.pc-tip');\n"
+    "  if(t)t.textContent=show?(r.getAttribute('data-raw')||''):'';}\n"
+    "document.addEventListener('mouseover',function(e){pctip(e,true);});\n"
+    "document.addEventListener('mouseout',function(e){pctip(e,false);});\n"
 )
 
 # A visible, zero-JS keyboard-navigation help (native <details>) shown on every
@@ -176,10 +273,22 @@ details.kbd-help[open] > summary { background: var(--accent); color: #fff; }
 @media (prefers-reduced-motion: reduce) {
   .console-more > summary .caret { transition: none; }
 }
+.byte-grid-wrap { overflow-x: auto; max-width: 100%; }
+/* Box-chain diagrams render at natural size (constant 14px font); if a diagram
+   is wider than the panel it scrolls horizontally rather than shrinking. */
+.dia-scroll { overflow-x: auto; max-width: 100%; }
+/* Box-chain caption: wraps below the diagram so a long note never widens it. */
+.dia-note { font: 13px/1.5 system-ui; color: #5a6b8c; margin: .45rem 0 0;
+  max-width: 100%; }
 .byte-grid { border-collapse: collapse; }
 .byte-grid caption { text-align: left; font-weight: 700; margin-bottom: .3rem; }
 .byte-grid td, .byte-grid th { border: 1px solid var(--border); padding: .35rem .6rem;
   font: 15px ui-monospace, monospace; text-align: center; }
+.byte-grid .byte-char { color: var(--accent); font-weight: 700; }
+.byte-grid .byte-int { color: var(--accent); font-weight: 700; background: #eef4ff; }
+.byte-src { margin: .1rem 0 .5rem; font-size: 15px; color: #444; }
+.byte-src code { background: #f2f5fb; border: 1px solid var(--border); border-radius: 4px;
+  padding: .1rem .35rem; font: 14px ui-monospace, monospace; color: #1a1a1a; }
 /* scroll-affordance: a fixed bottom cue that a document page has more content
    below the fold. Hidden by default (so with JS off it never shows and the page
    just scrolls normally); a tiny inline script in page_shell adds .show only
@@ -223,7 +332,7 @@ _MORE_CUE_HTML = (
 
 
 def page_shell(comp_id: str, body_html: str, *, title: str = "Demo",
-               highlight: bool = False) -> str:
+               highlight: bool = False, tri_link: bool = False) -> str:
     """Wrap *body_html* in a complete, self-contained WCAG AA document.
 
     Declares ``lang``, exposes a skip link targeting the ``#main`` landmark,
@@ -238,8 +347,17 @@ def page_shell(comp_id: str, body_html: str, *, title: str = "Demo",
     t = _e(title)
     hl_style = (f"<style>\n{_HLJS_CSS}\n{_HLJS_OVERRIDE_CSS}\n{_MONO_TOGGLE_CSS}\n</style>\n"
                 if highlight else "")
-    hl_script = (f"<script>\n{_HLJS_JS}\nhljs.highlightAll();\n</script>\n"
+    # highlightAll() colours the <pre><code class="language-*"> panels. The
+    # console_line_link source rows are standalone <code class="cll-line
+    # language-*"> (not inside a <pre>), so highlight them per line explicitly —
+    # this is the ONLY thing that gives the linked panel syntax colour (the link
+    # itself is pure CSS). Console rows (.cll-out) are output, left unhighlighted.
+    hl_script = (f"<script>\n{_HLJS_JS}\nhljs.highlightAll();\n"
+                 "document.querySelectorAll('.cll-src .cll-line')"
+                 ".forEach(function(el){hljs.highlightElement(el);});\n</script>\n"
                  if highlight else "")
+    cll_style = f"<style>\n{_CLL_CSS}</style>\n" if tri_link else ""
+    cll_script = f"<script>\n{_CLL_JS}</script>\n" if tri_link else ""
     # Zero-JS monochrome toggle (only meaningful when the code is highlighted).
     # The checkbox sits just before <main> so `:checked ~ main` reaches the code;
     # its label chip rides in the header row beside the title (no extra height).
@@ -258,6 +376,7 @@ def page_shell(comp_id: str, body_html: str, *, title: str = "Demo",
         f"<title>{t}</title>\n"
         f"<style>\n{_CSS}\n{COMPONENT_CSS}\n</style>\n"
         f"{hl_style}"
+        f"{cll_style}"
         "</head>\n"
         "<body>\n"
         '<a class="skip" href="#main">Skip to content</a>\n'
@@ -269,6 +388,7 @@ def page_shell(comp_id: str, body_html: str, *, title: str = "Demo",
         f'<div class="demo-wrap">\n{body_html}\n</div>\n'
         "</main>\n"
         f"{hl_script}"
+        f"{cll_script}"
         f"{_MORE_CUE_HTML}"
         "</body>\n"
         "</html>\n"
@@ -645,17 +765,79 @@ def output_console(comp_id: str, text: str, *, error: bool = False,
 # ---------------------------------------------------------------------------
 
 
-def byte_grid(comp_id: str, byte_values: Sequence[str], *, caption: str = "Memory bytes") -> str:
-    """Render a byte sequence as a labelled, captioned grid (little-endian)."""
+def _byte_glyph(hex_byte: str) -> str:
+    """Printable-ASCII character for a hex byte string, else ``·``.
+
+    Bytes in the printable range (0x20–0x7e) render as their character; every
+    other byte (a NUL, an address byte, the high byte of a length) renders as a
+    middle dot, so text data reads as text and non-text bytes read as noise.
+    """
+    try:
+        v = int(hex_byte, 16)
+    except ValueError:
+        return "·"
+    return chr(v) if 0x20 <= v <= 0x7e else "·"
+
+
+def _int_group_row(byte_values: Sequence[str], size: int, label: str) -> str:
+    """A grouped decoded-int row: every *size* bytes → one ``colspan`` cell holding
+    the little-endian signed value. A trailing partial group spans what it has."""
+    cells = []
+    for i in range(0, len(byte_values), size):
+        grp = byte_values[i:i + size]
+        try:
+            raw = bytes(int(b, 16) for b in grp)
+            txt = str(int.from_bytes(raw, "little", signed=True))
+        except ValueError:
+            txt = "?"
+        cells.append(f'<td class="byte-int" colspan="{len(grp)}">{_e(txt)}</td>')
+    return f'<tr><th scope="row">{_e(label)}</th>{"".join(cells)}</tr>\n'
+
+
+def byte_grid(comp_id: str, byte_values: Sequence[str], *, caption: str = "Memory bytes",
+              show_ascii: bool = True, decode: str = "") -> str:
+    """Render a byte sequence as a labelled, captioned grid (little-endian).
+
+    With ``show_ascii`` (the default) a third ``char`` row maps each byte to its
+    printable-ASCII glyph (``·`` for non-printable), so string data reads as
+    characters: a short string's inline ``h e l l o`` stands out plainly against
+    the all-``·`` address bytes of a heap pointer.
+
+    ``decode="int32"`` instead adds a grouped row that folds every 4 bytes into one
+    ``colspan`` cell holding the decoded little-endian int — legible for a numeric
+    array (an ``int arr[5]`` reads as ``10 | 20 | 30 | 40 | 50``, each value sitting
+    over its 4 bytes), where the per-byte ``char`` row is noise. It replaces the
+    char row, so the caller opts into exactly one third row.
+    """
     p = _safe(comp_id)
     index_row = "".join(f'<th scope="col">{i}</th>' for i in range(len(byte_values)))
     value_row = "".join(f'<td class="byte-cell">{_e(b)}</td>' for b in byte_values)
+    if decode == "int32":
+        extra_row = _int_group_row(byte_values, 4, "int32")
+    elif show_ascii:
+        char_cells = "".join(
+            f'<td class="byte-char">{_e(_byte_glyph(b))}</td>' for b in byte_values
+        )
+        extra_row = f'<tr><th scope="row">char</th>{char_cells}</tr>\n'
+    else:
+        extra_row = ""
+    # A wide byte dump (e.g. a 32-byte std::string) is broader than the panel; the
+    # scroll wrapper keeps it inside the column and adds a horizontal scrollbar
+    # instead of letting the table overrun the page edge.
+    # The caller (a <details> disclosure) usually carries the label in its
+    # <summary>, so an empty caption suppresses the table's own <caption> rather
+    # than duplicating that line; a non-empty caption still renders (direct use).
+    caption_html = f"<caption>{_e(caption)}</caption>\n" if caption else ""
     return (
+        f'<div class="byte-grid-wrap">\n'
         f'<table class="byte-grid" id="{p}">\n'
-        f"<caption>{_e(caption)}</caption>\n"
+        f"{caption_html}"
         f'<thead><tr><th scope="row">byte</th>{index_row}</tr></thead>\n'
-        f'<tbody><tr><th scope="row">value</th>{value_row}</tr></tbody>\n'
+        f'<tbody><tr><th scope="row">value</th>{value_row}</tr>\n'
+        f"{extra_row}"
+        f"</tbody>\n"
         f"</table>\n"
+        f"</div>\n"
     )
 
 
@@ -692,7 +874,7 @@ def code_line_link(
         style_lines.append(
             f"#{p} .ln-{sk}:hover ~ .cll-diagram .bx-{sk},"
             f"#{p} .ln-{sk}:focus ~ .cll-diagram .bx-{sk}"
-            " { outline: 3px solid var(--c-val); background: #e8f7ee; }"
+            " { outline: 3px solid var(--c-link); background: #f3edff; }"
         )
     style = "\n".join(style_lines)
 
@@ -721,6 +903,136 @@ def code_line_link(
         f"<style>\n{style}\n</style>\n"
         f"{code_lines}"
         f'<div class="cll-diagram">{boxes}</div>\n'
+        f"</div>\n"
+    )
+
+
+def console_line_link(
+    comp_id: str,
+    source_lines: "Sequence[tuple[str, str | None]]",
+    console_lines: "Sequence[tuple[str, str | None]]",
+    language: str = "cpp",
+    *,
+    tri_source: "Sequence[tuple[str, str]] | None" = None,
+    tri_console: "Sequence[tuple[str, str]] | None" = None,
+) -> str:
+    """Bidirectional hover link between real console output lines and the source
+    ``cout`` that produced them (item 22; M10 trace-reading).
+
+    Each keyed source line and the console line(s) it produced share a
+    ``comp_id``-namespaced ``k-<key>`` class. Hovering/focusing either endpoint
+    highlights both via ``:has()`` — order-independent, so the highlight goes both
+    ways, no JavaScript. A CSS mirror of :func:`code_line_link`, extended to be
+    bidirectional and to link line↔line instead of line↔box.
+
+    Source lines carry ``language-<language>`` so the page's highlight.js pass
+    (see :func:`page_shell`) colours them per line; the console rows stay plain
+    (they are program output, not code).
+
+    When *tri_source* and *tri_console* are both provided (tri-link mode), the
+    component emits ``data-cll`` attributes on each keyed row instead of the
+    ``k-<key>`` CSS classes, and omits the per-key ``:has()`` rules — the page
+    JS handler drives highlighting in that mode."""
+    p = _safe(comp_id)
+
+    # --- Tri-link mode: data-cll attributes, no :has() CSS ---
+    if tri_source is not None and tri_console is not None:
+        def _rows_keyed(lines, keyed, lang=""):
+            lc = f" language-{lang}" if lang else ""
+            out = ""
+            for (code, _k), (_t, keystr) in zip(lines, keyed):
+                attr = f' data-cll="{_e(keystr)}"' if keystr else ""
+                link = " cll-link" if keystr else ""
+                tab = ' tabindex="0"' if keystr else ""
+                out += f'<code class="cll-line{link}{lc}"{attr}{tab}>{_e(code)}</code>\n'
+            return out
+
+        style_lines = [
+            f"#{p} .cll-line {{ display:block; margin:0; padding:.1rem .7rem;"
+            " font:14px/1.6 ui-monospace,monospace;"
+            " background:var(--code-bg); color:var(--code-fg); }",
+            # Program output is a light console panel, never dark code — the
+            # output region overrides the shared dark .cll-line background.
+            f"#{p} .cll-out .cll-line {{ background:var(--panel-bg);"
+            " color:var(--fg); }",
+            f"#{p} .cll-src .cll-line:first-of-type,"
+            f"#{p} .cll-out .cll-line:first-of-type"
+            " { border-radius:8px 8px 0 0; padding-top:.5rem; }",
+            f"#{p} .cll-src .cll-line:last-of-type,"
+            f"#{p} .cll-out .cll-line:last-of-type"
+            " { border-radius:0 0 8px 8px; padding-bottom:.5rem; }",
+            f"#{p} .cll-out {{ margin-top:.3rem; }}",
+            f"#{p} .cll-label {{ font-weight:700; margin:.8rem 0 .2rem; }}",
+            f"#{p} .cll-link {{ cursor:pointer; text-decoration:underline dotted; }}",
+        ]
+        style = "\n".join(style_lines)
+        return (
+            f'<div id="{p}" style="display:flex;flex-direction:column">\n'
+            f"<style>\n{style}\n</style>\n"
+            f'<div class="cll-src">\n{_rows_keyed(source_lines, tri_source, language)}</div>\n'
+            f'<div class="cll-label">Program output</div>\n'
+            f'<div class="cll-out">\n{_rows_keyed(console_lines, tri_console)}</div>\n'
+            f"</div>\n"
+        )
+
+    # --- Original (non-tri) path ---
+    keys = sorted({k for _c, k in source_lines if k}
+                  | {k for _c, k in console_lines if k})
+    style_lines = [
+        f"#{p} .cll-line {{ display:block; margin:0; padding:.1rem .7rem;"
+        " font:14px/1.6 ui-monospace,monospace;"
+        " background:var(--code-bg); color:var(--code-fg); }",
+        # Program output is a light console panel, never dark code — the output
+        # region overrides the shared dark .cll-line background.
+        f"#{p} .cll-out .cll-line {{ background:var(--panel-bg);"
+        " color:var(--fg); }",
+        # Qualify by region: the cll-label between the two blocks would otherwise
+        # break :first/:last-of-type rounding across them.
+        f"#{p} .cll-src .cll-line:first-of-type,"
+        f"#{p} .cll-out .cll-line:first-of-type"
+        " { border-radius:8px 8px 0 0; padding-top:.5rem; }",
+        f"#{p} .cll-src .cll-line:last-of-type,"
+        f"#{p} .cll-out .cll-line:last-of-type"
+        " { border-radius:0 0 8px 8px; padding-bottom:.5rem; }",
+        f"#{p} .cll-out {{ margin-top:.3rem; }}",
+        f"#{p} .cll-label {{ font-weight:700; margin:.8rem 0 .2rem; }}",
+    ]
+    # Only when keyed lines exist (no keys → no .cll-link elements → dead rule).
+    if keys:
+        style_lines.append(
+            f"#{p} .cll-link {{ cursor:pointer; text-decoration:underline dotted; }}"
+        )
+    for k in keys:
+        sk = _safe(k)
+        # Fixed light-violet highlight bg → force dark text so it stays readable in
+        # any theme (unlike code_line_link, whose highlight inherits --code-fg).
+        style_lines.append(
+            f"#{p}:has(.k-{sk}:hover) .k-{sk},"
+            f"#{p}:has(.k-{sk}:focus) .k-{sk}"
+            " { outline:3px solid var(--c-link); outline-offset:-3px;"
+            " background:#f3edff; color:#111; }")
+    style = "\n".join(style_lines)
+
+    def _rows(lines: "Sequence[tuple[str, str | None]]", lang: str = "") -> str:
+        # ``lang`` adds ``language-<lang>`` so highlight.js colours the row; the
+        # console side passes "" (output is not code, must not be highlighted).
+        lc = f" language-{lang}" if lang else ""
+        out = ""
+        for code, k in lines:
+            if k:
+                sk = _safe(k)
+                out += (f'<code class="cll-line cll-link k-{sk}{lc}" tabindex="0">'
+                        f"{_e(code)}</code>\n")
+            else:
+                out += f'<code class="cll-line{lc}">{_e(code)}</code>\n'
+        return out
+
+    return (
+        f'<div id="{p}" style="display:flex;flex-direction:column">\n'
+        f"<style>\n{style}\n</style>\n"
+        f'<div class="cll-src">\n{_rows(source_lines, language)}</div>\n'
+        f'<div class="cll-label">Program output</div>\n'
+        f'<div class="cll-out">\n{_rows(console_lines)}</div>\n'
         f"</div>\n"
     )
 
@@ -919,25 +1231,28 @@ def code_diagram_panel(comp_id: str, code_html: str, diagram_html: str,
 
 
 def zoomable(comp_id: str, inner_html: str, *, label: str = "⤢ Enlarge") -> str:
-    """Wrap HTML in a zero-JS click-to-fullscreen container with zoom levels.
+    """Wrap HTML in a zero-JS click-to-enlarge container with zoom levels.
 
     A visually-hidden but keyboard-focusable checkbox drives the open state; the
-    visible ``label`` chip opens it. When checked, the SAME ``.zoom-body`` (which
-    contains ``inner_html`` verbatim — never duplicated, so any SVGs inside keep
-    their one-to-one ``role="img"`` AND stay interactive: a stepper's radios
-    still work in the overlay) is promoted to a fixed full-screen overlay.
+    visible ``label`` chip opens it. When checked, the SAME ``.zoom-content``
+    (``inner_html`` verbatim — never duplicated, so any SVGs inside keep their
+    one-to-one ``role="img"`` AND stay interactive) is scaled IN PLACE.
 
-    The enlarged content sits in ``.zoom-content`` — the ENTIRE right panel
-    (``inner_html``: stepper + anatomy) as one unit — stacked ABOVE the full-area
-    ``.zoom-backdrop`` (so clicks on the diagram/stepper land on it; only clicks
-    in the surrounding backdrop, or the ✕, close it). Five zoom-level radios —
-    0.5× / 0.75× / 1× / 1.5× / 2× — apply a single CSS ``zoom`` to that whole
-    panel, so it scales as one unit and every internal relationship (frame
-    diagram ↔ anatomy, spacing, text) is preserved exactly — just bigger or
-    smaller. 1.5× is the default. The toolbar wraps and uses 44px touch targets
-    for mobile. No ESC (a native <dialog> would need scripting)."""
+    The key sizing property: ``.zoom-content`` stays in normal flow, so it keeps
+    the width it had in the right panel (a diagram shrunk to fit its column
+    renders at that shrunk "panel size"). The zoom-level radios then apply
+    ``transform: scale(k)`` — a visual-only scale relative to that panel size, no
+    reflow. So **1× is byte-identical to the panel**, 2× is exactly twice the
+    panel, etc. (An earlier version promoted the panel to a fixed ``fit-content``
+    overlay, which re-based the diagram to its *natural* size — so 1× rendered
+    larger than the panel. Scaling in place fixes that.) A fixed full-viewport
+    ``.zoom-backdrop`` dims the page; the scaled diagram sits above it and grows
+    from its column (``transform-origin: top right``) over the code to its left.
+    Five levels — 0.5× / 0.75× / 1× / 1.5× / 2×, default 1.5×; clicking the
+    backdrop or ✕ closes. 44px touch targets; no ESC (that would need scripting)."""
     p = _safe(comp_id)
-    # (sid, label, aria, zoom-factor) — a plain multiplier on the whole panel.
+    # (sid, label, aria, scale-factor) — a transform:scale multiplier, relative
+    # to the diagram's panel-rendered size (so 1× == the size in the panel).
     levels = [
         ("zl0", "0.5×", "half size", "0.5"),
         ("zl1", "0.75×", "three-quarter size", "0.75"),
@@ -953,9 +1268,9 @@ def zoomable(comp_id: str, inner_html: str, *, label: str = "⤢ Enlarge") -> st
     focus_sel = ", ".join(
         f"#{p} #{p}-{sid}:focus-visible ~ .zoom-bar label[for={p}-{sid}]"
         for sid, _lab, _aria, _z in levels)
-    zoom_css = "".join(
+    scale_css = "".join(
         f"#{p} .zoom-cb:checked ~ .zoom-body #{p}-{sid}:checked ~ .zoom-content"
-        f" {{ zoom:{z}; }}\n"
+        f" {{ transform:scale({z}); }}\n"
         for sid, _lab, _aria, z in levels)
     style = (
         # hidden-but-focusable controls
@@ -968,21 +1283,22 @@ def zoomable(comp_id: str, inner_html: str, *, label: str = "⤢ Enlarge") -> st
         f"#{p} .zoom-cb:focus-visible ~ .zoom-open {{ outline:2px solid var(--accent,#2a6);"
         f" outline-offset:2px; }}\n"
         f"#{p} .zoom-bar, #{p} .zoom-close, #{p} .zoom-backdrop {{ display:none; }}\n"
-        # --- overlay open ---
-        f"#{p} .zoom-cb:checked ~ .zoom-body {{ position:fixed; inset:0; z-index:1000;"
-        f" background:#fff; overflow:auto; padding:1rem;"
-        f" box-shadow:0 0 0 100vmax rgba(0,0,0,.5); }}\n"
+        # --- open state: scale the diagram IN PLACE (keeps its panel size as the
+        # scale base, so 1x == panel and kx == k*panel) ---
+        # Dimming backdrop: a fixed full-viewport label; clicking it closes.
         f"#{p} .zoom-cb:checked ~ .zoom-body .zoom-backdrop {{ display:block;"
-        f" position:fixed; inset:0; z-index:1001; }}\n"
-        # The whole panel, at its natural size, centered; `zoom` (below) scales it
-        # as one unit — so nothing inside is re-laid-out and nothing shifts.
+        f" position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,.5); }}\n"
+        # The diagram stays in flow (keeps its panel width as the scale base) and
+        # is lifted above the backdrop; scale_css (below) grows it from its column
+        # position over the code to its left. transform is visual-only (no reflow).
         f"#{p} .zoom-cb:checked ~ .zoom-body .zoom-content {{ position:relative;"
-        f" z-index:1002; width:fit-content; margin:0 auto; }}\n"
-        # toolbar: sticky so it never overlaps content even when it wraps on mobile
+        f" z-index:1002; transform-origin:top right; }}\n"
+        # toolbar: fixed at the viewport top so the level controls stay reachable
+        # while the diagram expands over the page below.
         f"#{p} .zoom-cb:checked ~ .zoom-body .zoom-bar {{ display:flex; flex-wrap:wrap;"
-        f" gap:.4rem; align-items:center; position:sticky; top:0; z-index:1003;"
-        f" padding:.5rem; margin-bottom:1rem; background:#f4f6fb; border:1px solid #ccc;"
-        f" border-radius:8px; }}\n"
+        f" gap:.4rem; align-items:center; position:fixed; top:0; left:0; right:0;"
+        f" z-index:1003; padding:.5rem; background:#f4f6fb;"
+        f" border-bottom:1px solid #ccc; }}\n"
         f"#{p} .zoom-bar .zlab {{ min-height:44px; display:inline-flex; align-items:center;"
         f" padding:.2rem .7rem; border:1px solid #bbb; border-radius:6px; background:#fff;"
         f" cursor:pointer; font:13px system-ui; }}\n"
@@ -992,7 +1308,7 @@ def zoomable(comp_id: str, inner_html: str, *, label: str = "⤢ Enlarge") -> st
         f" margin-left:auto; align-items:center; justify-content:center; min-width:44px;"
         f" min-height:44px; border:1px solid #bbb; border-radius:8px; background:#fff;"
         f" cursor:pointer; font-size:20px; }}\n"
-        + zoom_css
+        + scale_css
     )
     radios = "".join(
         f'<input type="radio" class="zl" name="{p}-zl" id="{p}-{sid}"'
@@ -1164,8 +1480,292 @@ def stepped_frames(comp_id: str, steps, *, with_anatomy: bool = False) -> str:
     )
 
 
+def stepped_boxchain(comp_id: str, steps: list, link_values: bool = False) -> str:
+    """Zero-JS CSS-radio stepper over box-chain diagram states.
+
+    ``steps`` is a list of box-chain spec dicts (each ``{title?, nodes, links?,
+    note?}``). Selecting a step number reveals that state's SVG; all others are
+    hidden. Defaults to the first step. Follows the same CSS-radio pattern as
+    ``stepped_frames``. Hover-tooltip on each step button shows the step title.
+
+    ``link_values`` threads tri-link value keys into each step's box-chain (see
+    :func:`_svg_boxchain`), so a value's box is highlightable from the linked
+    console/source in whichever frame is currently shown. The duplicate-value
+    warning is per-step (each step is its own spec), so a value legitimately
+    repeating across steps does not false-trigger it."""
+    p = _safe(comp_id)
+    inputs, labels, views = [], [], []
+    # A step's SVG width is driven by its widest text line; a long per-step `note`
+    # used to inflate it — so a wordy step rendered wider AND, once past the column
+    # width, `max-width:100%` scaled every node down. Fix: pull the note OUT of the
+    # SVG and render it as a wrapping HTML caption, so every step's SVG is the same
+    # box-driven width and boxes are identical size in every step. The views sit in
+    # a bounded, keyboard-focusable scroll region so a tall chain scrolls the PANEL,
+    # not the page (WCAG 2.1.1: focusable region; diagrams are exempt from the
+    # 1.4.10 no-2D-scroll rule).
+    css = [
+        f"#{p} .sbc-views {{ overflow:auto; max-height:60vh; }}",
+        # A shown step is a flex row: the SVG on the left, its explanation in a panel
+        # to the RIGHT (using the empty space next to the narrow chain) so the caption
+        # is visible without scrolling to the bottom of the diagram. Zero JS.
+        f"#{p} .sbc-v {{ display:none; gap:1rem; align-items:flex-start; }}",
+        f"#{p} .sbc-note {{ margin:0; flex:1; min-width:11rem;"
+        f" font:14px/1.5 system-ui; color:#222; background:#eef3fb;"
+        f" border-left:3px solid #0b5394; padding:.55rem .75rem; border-radius:4px; }}",
+        # When a step has an `aside: true` node (a detached, just-unlinked box) the
+        # caption cell becomes a column: the note on top, the detached node BELOW it,
+        # filling the space beside the chain instead of a wide empty SVG column.
+        f"#{p} .sbc-side {{ flex:1; min-width:11rem; display:flex;"
+        f" flex-direction:column; align-items:flex-start; gap:.6rem; }}",
+        f"#{p} .sbc-side .sbc-note {{ flex:0 0 auto; }}",
+    ]
+    for i, step in enumerate(steps):
+        title = step.get("title", "")
+        checked = " checked" if i == 0 else ""
+        inputs.append(
+            f'<input type="radio" name="{p}-step" id="{p}-s{i}"{checked} '
+            f'style="position:absolute;opacity:0">')
+        labels.append(
+            f'<label for="{p}-s{i}" title="{_e(title)}" '
+            f'style="cursor:pointer;border:1px solid #bbb;border-radius:6px;'
+            f'padding:2px 9px;font:13px system-ui;min-height:44px;'
+            f'display:inline-flex;align-items:center">{i + 1}</label>')
+        # Unique id prefix per step so SVG element ids never collide across steps.
+        # Strip the note so it can't drive the SVG width; render it as a wrapping
+        # HTML caption below the chain instead (keeps every step's width equal).
+        note = step.get("note")
+        spec = {k: v for k, v in step.items() if k != "note"}
+        # `aside: true` nodes render as a compact box BELOW the note (in the caption
+        # column), not in the chain — so the chain SVG stays narrow and the detached
+        # node fills the otherwise-empty space under the caption.
+        nodes = spec.get("nodes", [])
+        aside = [n for n in nodes if n.get("aside")]
+        if aside:
+            spec = {**spec, "nodes": [n for n in nodes if not n.get("aside")]}
+        svg = _svg_boxchain(spec, f"{p}-s{i}bc", link_values=link_values)
+        note_html = f'<p class="sbc-note">{_e(note)}</p>' if note else ""
+        if aside:
+            clean = [{k: v for k, v in n.items() if k != "aside"} for n in aside]
+            aside_svg = _svg_boxchain({"nodes": clean}, f"{p}-s{i}as",
+                                      link_values=link_values)
+            caption = (f'<div class="sbc-side">{note_html}'
+                       f'<div class="sbc-aside">{aside_svg}</div></div>')
+        else:
+            caption = note_html
+        views.append(f'<div class="sbc-v sbc-v{i}">{svg}{caption}</div>')
+        css.append(
+            f"#{p} #{p}-s{i}:checked ~ .sbc-views .sbc-v{i} {{ display:flex; }}")
+        css.append(
+            f"#{p} #{p}-s{i}:checked ~ .sbc-steps label[for={p}-s{i}] "
+            f"{{ background:#0b5394; color:#fff; border-color:#0b5394; }}")
+        css.append(
+            f"#{p} #{p}-s{i}:focus-visible ~ .sbc-steps label[for={p}-s{i}] "
+            f"{{ outline:3px solid var(--accent);outline-offset:2px; }}")
+    return (
+        f'<div id="{p}"><style>{chr(10).join(css)}</style>'
+        + "".join(inputs)
+        + f'<div class="sbc-steps" role="group" '
+        f'aria-label="Step through diagram states" '
+        f'style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'
+        + "".join(labels) + "</div>"
+        + f'<div class="sbc-views" tabindex="0" role="region" '
+        f'aria-label="Diagram viewport — scroll to see the full chain">'
+        + "".join(views) + "</div>"
+        + "</div>"
+    )
+
+
+def step_gauge(comp_id: str, steps: list) -> str:
+    """Zero-JS CSS-radio stepper over a build-derived "fuel bar" gauge.
+
+    ``steps`` is the list from :func:`compiler_runner.parse_gauge_all` —
+    ``[{series, value, max|None, label}]`` in program order. Each step draws a
+    filled bar whose numeric value is ALSO shown as text (WCAG 1.4.1: never the
+    bar length alone). When a step carries an explicit ``max`` (e.g. a vector's
+    capacity) the capacity TRACK is scaled to the global-max capacity, so a
+    doubling capacity reads as a doubling track length; without a max the track
+    is the sequence peak (e.g. ``use_count``). Capacity gauges render two levels
+    in distinct colours — blue ``size`` fill inside a green ``capacity`` band,
+    with a colour legend below the bar — and the grey rail runs 25% past the
+    largest capacity so the capacity level stays visible even at peak. Same
+    CSS-radio mechanism as :func:`stepped_boxchain`; no JS. Returns "" for no
+    steps."""
+    p = _safe(comp_id)
+    if not steps:
+        return ""
+    values = [s["value"] for s in steps]
+    peak = max(max(values), 1)
+    refs = [(s["max"] if s.get("max") is not None else peak) for s in steps]
+    global_max = max(max(refs), 1)
+    # Two-level bar ONLY when a real capacity (max) exists: the fill (size) sits
+    # inside a coloured capacity band so the two quantities read as distinct
+    # colours (blue = size in use, green = allocated capacity). For use_count
+    # (no max) there is no capacity concept, so the band stays neutral grey and
+    # the widget degenerates to a single blue fill.
+    has_max = any(s.get("max") is not None for s in steps)
+    cap_bg = "#6aa84f" if has_max else "#dfe6ef"
+    # The rail (grey track) runs slightly PAST the largest capacity so the
+    # capacity band never reaches the rail's end — its right edge (the capacity
+    # level) stays visible even at peak capacity. Capacity gauges only; a
+    # use_count peak still fills its rail (no headroom).
+    rail_max = global_max * 1.25 if has_max else global_max
+
+    css = [
+        f"#{p} .sg-v {{ display:none; }}",
+        f"#{p} .sg-head {{ font:14px system-ui; color:#222; margin-bottom:4px; }}",
+        f"#{p} .sg-head b {{ font-size:18px; }}",
+        # The header numbers are colour-keyed to the bar: blue = size, green =
+        # capacity, so the label reads the same two levels the bar shows. Green
+        # is darkened from the band for text-contrast (WCAG).
+        f"#{p} .sg-sz {{ color:#0b5394; }}",
+        f"#{p} .sg-cp {{ color:#38761d; }}",
+        f"#{p} .sg-rail {{ height:22px; background:#eef1f5; border:1px solid #cdd3db;"
+        f" border-radius:4px; overflow:hidden; }}",
+        # The capacity box (a real ``max``) fills a fraction of the rail; the
+        # value fill sits inside it. For use_count (no max) the cap box is the
+        # whole rail, so the widget degenerates to a single fill bar.
+        f"#{p} .sg-cap {{ height:100%; background:{cap_bg};"
+        f" border-right:1px solid #38761d; box-sizing:border-box; }}"
+        if has_max else
+        f"#{p} .sg-cap {{ height:100%; background:{cap_bg};"
+        f" border-right:1px solid #b6c0cd; box-sizing:border-box; }}",
+        f"#{p} .sg-fill {{ height:100%; background:#0b5394; }}",
+        f"#{p} .sg-note {{ margin:.5rem 0 0; font:14px/1.5 system-ui; color:#222;"
+        f" background:#eef3fb; border-left:3px solid #0b5394; padding:.5rem .7rem;"
+        f" border-radius:4px; }}",
+        # The marked code line that produced this step's value (author-bracketed
+        # in the source, lifted verbatim — cannot drift). Omitted for steps with
+        # no natural line (scope-exit / destructor).
+        f"#{p} .sg-code {{ margin:.4rem 0 0; font:12px/1.4 ui-monospace,monospace;"
+        f" color:#555; }}",
+        f"#{p} .sg-code code {{ background:#f3f4f6; padding:1px 5px;"
+        f" border-radius:3px; color:#1a1a1a; }}",
+    ]
+    inputs, labels, views = [], [], []
+    for i, s in enumerate(steps):
+        value = s["value"]
+        vmax = s.get("max")
+        tmax = vmax if vmax is not None else peak
+        cap_pct = 100 * tmax / rail_max
+        fill_pct = (100 * value / tmax) if tmax else 0
+        series = _e(s.get("series", ""))
+        label = _e(s.get("label", ""))
+        # "size 3 / capacity 4" with each number colour-keyed to its bar level;
+        # no-max gauges (use_count) show just the single blue count.
+        if vmax is not None:
+            head_html = (f'{series} <b class="sg-sz">{value}</b>'
+                         f' / capacity <b class="sg-cp">{_e(str(vmax))}</b>')
+        else:
+            head_html = f'{series} <b class="sg-sz">{value}</b>'
+        code = s.get("code")
+        code_html = (f'<div class="sg-code">from <code>{_e(code)}</code></div>'
+                     if code else "")
+        aria = (f"{s.get('series', '')} {value}"
+                + (f" of {vmax}" if vmax is not None else "")
+                + (f" — {s.get('label', '')}" if s.get("label") else "")
+                + (f"; from {code}" if code else ""))
+        checked = " checked" if i == 0 else ""
+        inputs.append(
+            f'<input type="radio" name="{p}-step" id="{p}-s{i}"{checked} '
+            f'style="position:absolute;opacity:0">')
+        labels.append(
+            f'<label for="{p}-s{i}" title="{label}" '
+            f'style="cursor:pointer;border:1px solid #bbb;border-radius:6px;'
+            f'padding:2px 9px;font:13px system-ui;min-height:44px;'
+            f'display:inline-flex;align-items:center">{i + 1}</label>')
+        views.append(
+            f'<div class="sg-v sg-v{i}" role="img" aria-label="{_e(aria)}">'
+            f'<div class="sg-head">{head_html}</div>'
+            f'<div class="sg-rail"><div class="sg-cap" style="width:{cap_pct:g}%">'
+            f'<div class="sg-fill" style="width:{fill_pct:g}%"></div></div></div>'
+            f'{code_html}'
+            f'<p class="sg-note">{label}</p></div>')
+        css.append(f"#{p} #{p}-s{i}:checked ~ .sg-views .sg-v{i} {{ display:block; }}")
+        css.append(
+            f"#{p} #{p}-s{i}:checked ~ .sg-steps label[for={p}-s{i}] "
+            f"{{ background:#0b5394; color:#fff; border-color:#0b5394; }}")
+        css.append(
+            f"#{p} #{p}-s{i}:focus-visible ~ .sg-steps label[for={p}-s{i}] "
+            f"{{ outline:3px solid var(--accent);outline-offset:2px; }}")
+    # Static colour key below the bar (capacity gauges only) — decorative
+    # (aria-hidden): the numbers are already announced per step, so this
+    # reinforces the two levels for sighted readers without screen-reader noise.
+    legend = ""
+    if has_max:
+        css.append(
+            f"#{p} .sg-legend {{ display:flex; gap:1.2rem; margin-top:.55rem;"
+            f" font:13px system-ui; color:#333; }}")
+        css.append(
+            f"#{p} .sg-legend .sw {{ display:inline-block; width:12px;"
+            f" height:12px; border-radius:2px; margin-right:6px;"
+            f" vertical-align:-1px; }}")
+        legend = (
+            f'<div class="sg-legend" aria-hidden="true">'
+            f'<span><i class="sw" style="background:#0b5394"></i>size — in use</span>'
+            f'<span><i class="sw" style="background:{cap_bg}"></i>capacity — allocated</span>'
+            f'</div>')
+    return (
+        f'<figure id="{p}" style="margin:0"><style>{chr(10).join(css)}</style>'
+        + "".join(inputs)
+        + '<div class="sg-steps" role="group" aria-label="Step through the count" '
+        'style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'
+        + "".join(labels) + "</div>"
+        + '<div class="sg-views">' + "".join(views) + "</div>"
+        + legend
+        + "</figure>"
+    )
+
+
+def perf_chart_panel(comp_id: str, charts: dict) -> str:
+    """Render one or more perf_chart bar charts with a y-axis linear/log toggle.
+
+    charts: {chart_id: {"spec": spec, "points": [...]}}. Buttons carry
+    data-pc-toggle; the _CLL_JS handler (Task 6) rescales bars from data-y.
+    """
+    blocks = []
+    for cid, ch in charts.items():
+        spec = ch["spec"]
+        svg = _svg_perf_chart(spec, ch["points"], f"{comp_id}-{cid}")
+        mode = spec.get("mode", "bar")
+
+        def _group(axis, label):
+            scale = (spec.get(axis) or {}).get("scale", "linear")
+            buttons = "".join(
+                f'<button type="button" data-pc-toggle="{s}" data-pc-axis="{axis}" '
+                f'aria-pressed="{"true" if s == scale else "false"}">{s}</button>'
+                for s in ("linear", "log"))
+            return (f'<div class="pc-toggle" role="group" aria-label="{label}">'
+                    + buttons + '</div>')
+
+        if mode in ("line", "scatter"):
+            toggle = _group("x", "x-axis scale") + _group("y", "y-axis scale")
+        else:  # bar: y toggle only
+            toggle = _group("y", "y-axis scale")
+        blocks.append(f'<figure class="pc-fig">{toggle}{svg}</figure>')
+    return "".join(blocks)
+
+
+def _console_body(pid: str, v: dict) -> str:
+    """The compile badge + program console for one baked variant (no code block).
+
+    Shared by the ordinary per-variant panel (:func:`_demo_variant_body`) and the
+    output-tabs layout (:func:`demo_panel`), where the code shows once and only
+    this console is tabbed.
+    """
+    return (
+        '<div style="margin-top:.8rem">'
+        + compile_status_badge(f"{pid}-badge", v["ok"], kind=v.get("error_kind") or "compile")
+        + "</div>"
+        + output_console(f"{pid}-out", v["stdout"] if v["ok"] else v["stderr"],
+                         error=v["failed"], kind=v.get("error_kind") or "compile")
+    )
+
+
 def _demo_variant_body(pid: str, v: dict, caption: str, diagram: bool = True,
-                       *, step_diagram: dict | None = None) -> str:
+                       *, step_diagram: dict | None = None,
+                       boxchain: "dict | list | None" = None, byte_decode: str = "",
+                       gauge: bool = False, console_link: bool = False,
+                       link_diagram: bool = False) -> str:
     """One compiled program: code+diagram split, badge, output, collapsed bytes.
 
     The byte box is data-driven: it is emitted only when byte data exists. A
@@ -1180,16 +1780,70 @@ def _demo_variant_body(pid: str, v: dict, caption: str, diagram: bool = True,
     column's width never changes between variants — but the right cell is left
     empty rather than rendering the ``_svg_unknown`` "no diagram" placeholder.
     """
-    if diagram and step_diagram:
-        # A "steps" diagram: an expression header + caption + a paced stepper fills
-        # the right column in place of a memory diagram. The medium is text, but
-        # architecturally it IS the diagram — the Key Idea stays a button.
-        items = [(s["summary"], _e(s["detail"]))
-                 for s in step_diagram.get("items", [])]
-        diagram_html = steps_diagram(f"{pid}-steps", items,
-                                     expr=step_diagram.get("expr"),
-                                     caption=step_diagram.get("caption"))
-        code_block = code_diagram_panel(f"{pid}-cdp", v["code_html"],
+    # Build-derived count-over-time bar (use_count, size/capacity). It is a
+    # diagram, so it lives in the RIGHT diagram column — as a sub-tab beside the
+    # box-chain when one exists, or filling the column on variants that carry no
+    # structural picture (e.g. shared_ptr's fan-in "two owners" / "reset" tabs).
+    gauge_html = (step_gauge(f"{pid}-gauge", v["gauge_steps"])
+                  if gauge and v.get("gauge_steps") else "")
+    # No separate opt-in flag (unlike `gauge`): a variant only carries
+    # v["perf_chart"] when the author declared a perf_chart: block in the topic
+    # YAML, so the block's presence IS the opt-in. The `diagram` gate still
+    # suppresses it for diagram:false topics.
+    perf_html = (perf_chart_panel(f"{pid}-pc", v["perf_chart"])
+                 if diagram and v.get("perf_chart") else "")
+    # The LEFT-column content is the same in every branch (with or without a
+    # diagram): either the console_line_link block or the plain code+console.
+    # console_line_link (item 22) replaces the code+console with the bidirectional
+    # linked block when this variant marked its cout lines — but only for a CLEAN
+    # run: a compile error / runtime crash keeps its normal error display (a linked
+    # block would show stdout-only and hide the crash report, e.g. a double-free
+    # tab whose crash IS the lesson). Computing it once lets it appear beside a
+    # diagram too, not only in the full-width no-diagram case.
+    have_link = (console_link and not v.get("failed")
+                 and v.get("link_source")
+                 and any(k for _c, k in v.get("link_console", [])))
+    if link_diagram and have_link:
+        left = console_line_link(f"{pid}-cll", v["link_source"], v["link_console"],
+                                 tri_source=v.get("tri_source", []),
+                                 tri_console=v.get("tri_console", []))
+    elif have_link:
+        left = console_line_link(f"{pid}-cll", v["link_source"], v["link_console"])
+    else:
+        left = v["code_html"] + _console_body(pid, v)
+    if diagram and (boxchain or step_diagram or gauge_html or perf_html):
+        # Structural SVG (declarative box-chain), the paced steps stepper, and/or
+        # the step-gauge. When more than one exists they become sub-tabs on the
+        # diagram panel; a single one fills the column directly. Whole thing zooms.
+        reps = []
+        if boxchain:
+            if isinstance(boxchain, list):
+                reps.append(("Structure", stepped_boxchain(
+                    f"{pid}-bc", boxchain,
+                    link_values=(link_diagram and have_link))))
+            else:
+                reps.append(("Structure", _svg_boxchain(boxchain, f"{pid}-bc",
+                             link_values=(link_diagram and have_link))))
+        if step_diagram:
+            items = [(s["summary"], _e(s["detail"]))
+                     for s in step_diagram.get("items", [])]
+            reps.append(("Dispatch walk",
+                         steps_diagram(f"{pid}-steps", items,
+                                       expr=step_diagram.get("expr"),
+                                       caption=step_diagram.get("caption"))))
+        if gauge_html:
+            # Label the sub-tab by the counted series (e.g. "use_count"); hidden
+            # when the gauge is the only representation in the column.
+            series = (v["gauge_steps"][0].get("series") or "count")
+            reps.append((series, gauge_html))
+        if perf_html:
+            reps.append(("Chart", perf_html))
+        inner = (variant_tabs(f"{pid}-dtabs", reps) if len(reps) > 1
+                 else reps[0][1])
+        diagram_html = zoomable(f"{pid}-zoom", inner)
+        # The compile badge + program console live in the LEFT (code) column, so
+        # they match the code window's width instead of spanning the full panel.
+        code_block = code_diagram_panel(f"{pid}-cdp", left,
                                         diagram_html, ratio=(2, 1))
     elif diagram:
         pd = v.get("ptrdata")
@@ -1213,23 +1867,25 @@ def _demo_variant_body(pid: str, v: dict, caption: str, diagram: bool = True,
             ratio = (2, 1)
         else:
             diagram_html = memory_diagram(f"{pid}-md", pd) if pd else ""
-        code_block = code_diagram_panel(f"{pid}-cdp", v["code_html"],
+        code_block = code_diagram_panel(f"{pid}-cdp", left,
                                         diagram_html, ratio=ratio)
     else:
-        code_block = v["code_html"]
-    body = (
-        code_block
-        + '<div style="margin-top:.8rem">'
-        + compile_status_badge(f"{pid}-badge", v["ok"], kind=v.get("error_kind") or "compile")
-        + "</div>"
-        + output_console(f"{pid}-out", v["stdout"] if v["ok"] else v["stderr"],
-                         error=v["failed"], kind=v.get("error_kind") or "compile")
-    )
+        # No diagram: the linked block (or plain code+console) fills the width.
+        code_block = left
+    if link_diagram and have_link:
+        code_block = f'<div data-cll-scope="{pid}">{code_block}</div>'
+    body = code_block
     if v["bytes"]:
+        # Echo the marked source line above the grid so the dump names the exact
+        # line of code it came from (disambiguates e.g. two `arr`s in scope).
+        src_line = v.get("byte_line", "")
+        line_html = (f'<div class="byte-src">from <code>{_e(src_line)}</code></div>\n'
+                     if src_line else "")
         body += (
             f'<details style="margin-top:.6rem"><summary style="min-height:44px;'
-            f'cursor:pointer">Raw bytes of ptr (little-endian)</summary>\n'
-            + byte_grid(f"{pid}-bytes", v["bytes"], caption=caption)
+            f'cursor:pointer">{_e(caption)}</summary>\n'
+            + line_html
+            + byte_grid(f"{pid}-bytes", v["bytes"], caption="", decode=byte_decode)
             + "</details>\n"
         )
     return body
@@ -1237,7 +1893,9 @@ def _demo_variant_body(pid: str, v: dict, caption: str, diagram: bool = True,
 
 def demo_panel(comp_id: str, entry: dict, diagram: bool = True,
                *, concept: str | None = None, concept_title: str = "Key Idea",
-               steps: dict | None = None) -> str:
+               steps: dict | None = None, diagram_spec: dict | None = None,
+               gauge: bool = False, console_link: bool = False,
+               link_diagram: bool = False) -> str:
     """One demo's inner content: a variant_tabs cluster over a topic's baked data.
 
     A cases-topic variant carries a ``cases`` list; its sub-cases are stacked
@@ -1251,22 +1909,64 @@ def demo_panel(comp_id: str, entry: dict, diagram: bool = True,
     demo's own ``concept`` block and this argument is ignored.
     """
     cid = _safe(comp_id)
+
+    # Output-tabs layout (flag_variants topic): one source compiled at several
+    # flag sets. Show the code ONCE, then tab only the console below it — the
+    # source is identical across variants by construction, so repeating it per
+    # tab would just hide the one thing that changes (the compiler flags).
+    if entry.get("output_tabs"):
+        first = entry[entry["variants"][0]]
+        console_panels = []
+        for label in entry["variants"]:
+            v = entry[label]
+            pid = f"{cid}-{_safe(label)}"
+            console_panels.append((label, _console_body(pid, v)))
+        cluster = (
+            first["code_html"]
+            + '<div style="margin-top:.8rem">'
+            + variant_tabs(cid, console_panels)
+            + "</div>"
+        )
+        # A cross-variant perf_chart is shared across all tabs (attached to every
+        # variant), so render it ONCE in a diagram column beside the code+console
+        # cluster — the output-tabs layout has no per-variant diagram column.
+        if diagram and first.get("perf_chart"):
+            chart = zoomable(f"{cid}-pczoom",
+                             perf_chart_panel(f"{cid}-pc", first["perf_chart"]))
+            return code_diagram_panel(f"{cid}-cdp", cluster, chart, ratio=(2, 1))
+        if concept and not diagram:
+            return code_concept_panel(f"{cid}-ccp", cluster, concept, title=concept_title)
+        return cluster
+
+    decode = entry.get("byte_decode", "")
+    bvar = entry.get("byte_var", "")
+    # Name the dumped variable in the caption so the byte grid points at its
+    # declaration in the code (e.g. "Raw bytes of arr"); fall back when unknown.
+    byte_caption = (f"Raw bytes of {bvar} (little-endian)" if bvar
+                    else "Raw bytes (little-endian)")
     panels = []
     for label in entry["variants"]:
         v = entry[label]
         pid = f"{cid}-{_safe(label)}"
+        # cases-variants render stacked sub-cases; per-variant Structure/steps
+        # diagrams (boxchain/step_diagram) are not threaded here by design.
         if "cases" in v:
             subcases = []
             for j, case in enumerate(v["cases"]):
                 spid = f"{pid}-c{j}"
-                body = _demo_variant_body(spid, case, "Raw bytes of ptr (little-endian)",
-                                          diagram=diagram)
+                body = _demo_variant_body(spid, case, byte_caption,
+                                          diagram=diagram, byte_decode=decode)
                 subcases.append((case["label"], body))
             body = stacked_subcases(f"{pid}-ssc", subcases)
         else:
-            body = _demo_variant_body(pid, v, f"Raw bytes of ptr for {label} (little-endian)",
+            body = _demo_variant_body(pid, v, byte_caption,
                                       diagram=diagram,
-                                      step_diagram=(steps or {}).get(label))
+                                      step_diagram=(steps or {}).get(label),
+                                      boxchain=(diagram_spec or {}).get(label),
+                                      byte_decode=decode,
+                                      gauge=gauge,
+                                      console_link=console_link,
+                                      link_diagram=link_diagram)
         panels.append((label, body))
     tabs = variant_tabs(cid, panels)
     if concept and not diagram:

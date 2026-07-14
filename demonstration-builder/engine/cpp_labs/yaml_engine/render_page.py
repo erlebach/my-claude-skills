@@ -42,7 +42,8 @@ except ImportError:  # pragma: no cover
     yaml = None  # type: ignore[assignment]
 
 from .. import components as C
-from ..build_html import capture_variant, expand_variants
+from ..build_html import (
+    _attach_flag_variant_charts, capture_variant, expand_variants)
 
 _REF_RE = re.compile(r"\$\{([^}]+)\}")
 
@@ -80,6 +81,12 @@ def _bake_program(v: dict[str, Any], language: str | None = None) -> dict[str, A
         "code_html": _pre(v.get("source", ""), language),
         "ptrdata": v.get("ptrdata"),
         "ptrdata_steps": v.get("ptrdata_steps", []),
+        "gauge_steps": v.get("gauge_steps", []),
+        "perf_chart": v.get("perf_chart", {}),
+        "link_source": v.get("link_source", []),
+        "link_console": v.get("link_console", []),
+        "tri_source": v.get("tri_source", []),
+        "tri_console": v.get("tri_console", []),
         "stdout": v.get("stdout", ""),
         "stderr": v.get("stderr", ""),
         "ok": not v.get("failed", False),
@@ -87,14 +94,27 @@ def _bake_program(v: dict[str, Any], language: str | None = None) -> dict[str, A
         "error_kind": v.get("error_kind"),
         "bytes": mem.split() if mem and mem != "n/a" else [],
         "target_val": (v.get("ptrdata") or {}).get("target_val", "?"),
+        # the author-marked source line to echo beside the byte grid (or "")
+        "byte_line": v.get("byte_line", ""),
     }
 
 
 def _bake_one(topic: Any, language: str | None = None) -> dict[str, Any]:
     variants = [capture_variant(topic, cs) for cs in expand_variants(topic)]
+    # Cross-variant perf_charts (from: variants / flag_variants) aggregate one
+    # bar per variant across all tabs; attach here, once the full list exists.
+    _attach_flag_variant_charts(topic, variants)
     entry: dict[str, Any] = {
         "explanation": topic.explanation,
         "variants": [v.get("label") or "default" for v in variants],
+        # A flag_variants topic compiles ONE source at several flag sets; the
+        # renderer shows the code once and tabs only the console (Tier 2).
+        "output_tabs": bool(getattr(topic, "flag_variants", None)),
+        # byte_grid decode mode (topic-level): "" = char row, "int32" = grouped ints.
+        "byte_decode": getattr(topic, "byte_decode", ""),
+        # Name shown in the byte_grid caption ("Raw bytes of <byte_var>"): the
+        # dumped variable, so the grid points at its declaration in the code.
+        "byte_var": getattr(topic, "byte_label", "") or getattr(topic, "target_var", ""),
     }
     for v in variants:
         label = v.get("label") or "default"
@@ -218,12 +238,20 @@ def _build_topic(args: dict, data: dict) -> str:
     ``steps`` (optional, per-variant): a dict keyed by variant label; each value is
     ``{caption?, items: [{summary, detail}]}`` rendered as a "steps" diagram (an
     HTML stepper) in the right column, in place of the memory diagram.
+
+    ``diagram_spec`` (optional, per-variant): a dict keyed by variant label; each
+    value is a ``{nodes, links, note?}`` box-chain description rendered as a
+    ``Structure`` SVG (paired with ``steps`` as diagram sub-tabs when both exist).
     """
     return C.demo_panel(args["id"], data[args["source"]],
                         diagram=args.get("diagram", True),
                         concept=args.get("concept"),
                         concept_title=args.get("concept_title", "Key Idea"),
-                        steps=args.get("steps"))
+                        steps=args.get("steps"),
+                        diagram_spec=args.get("diagram_spec"),
+                        gauge=args.get("gauge", False),
+                        console_link=args.get("console_link", False),
+                        link_diagram=args.get("link_diagram", False))
 
 
 def _build_concept(args: dict, data: dict) -> str:
@@ -447,7 +475,7 @@ def build_layout(layout_path: "Path | str", dist_dir: Path) -> Path:
     nav = C.nav_shell("lab", items, style=style, leading=n,
                       selected=(n if n < len(items) else 0))
     body = f"{header_html}\n{nav}" if header_html else nav
-    page = C.page_shell("page", body, title=spec.get("title", "Lab"), highlight=True)
+    page = C.page_shell("page", body, title=spec.get("title", "Lab"), highlight=True, tri_link=True)
 
     stem = layout_path.stem
     out = Path(dist_dir) / stem / f"{stem}.html"

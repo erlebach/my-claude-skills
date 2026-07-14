@@ -7,6 +7,9 @@ HTML strings. Tests can call these without invoking g++.
 from __future__ import annotations
 
 import html as _html
+import math
+import re
+import warnings
 from typing import Any
 
 
@@ -27,6 +30,10 @@ SEMANTIC_PALETTE: dict[str, str] = {
     "type": "#6b3fa0",   # purple — type names
     "const": "#9a6700",  # amber  — const / immutable
     "err": "#b00020",    # red    — errors / compile failures
+    "link": "#7c3aed",   # violet — link-highlight affordance (hover/focus lights
+                         #          code<->console<->box). NOT a diagram semantic:
+                         #          kept distinct from val-green so a lit box is
+                         #          never confused with an `hl` (acted-on) node.
 }
 
 
@@ -41,6 +48,8 @@ _NULL_COLOR = "#8b0000"
 _LABEL_COLOR = "#1a1a1a"
 _DIM_COLOR = "#555555"
 _SHARED_COUNT_COLOR = "#4a7c20"
+_LIVE_COLOR = SEMANTIC_PALETTE["val"]   # green — the dispatch path that actually runs
+_REV_COLOR  = "#cc6600"                 # amber-orange — reverse/prev arrows; 6.4:1 vs white (WCAG AA)
 
 # Vertical-layout geometry (tall + narrow). Box text is 14px to match the code panel.
 _FONT = 14           # px, == code panel font-size (ui-monospace)
@@ -53,6 +62,24 @@ _SRC_W2 = 120        # source box width when two sources sit side-by-side
 _ARROW_GAP = 60      # vertical gap reserved for the arrow between rows
 _STACK_RM = 34       # right margin channel for >=3 stacked-source arrows
 _BOX_GAP = 12  # inter-box vertical gap in the stacked column
+# Every box-chain node is this fixed width, so nodes are identical across all
+# examples and all demos (the diagram panel is a constant size). The viewBox only
+# grows past this when a note/label is wider (then the diagram scrolls); node
+# boxes themselves never change width. Chosen to fill the ~393px diagram column
+# at natural (1:1) scale so the 14px font is identical in every box-chain.
+_BOXCHAIN_NODE_W = 340
+
+
+_NODE_VALUE_RE = re.compile(r"-?\d+")
+
+
+def _node_key(nd: dict) -> str | None:
+    """The tri-link value key for a box: explicit ``key`` wins, else the first
+    integer in the label. Returns ``None`` when neither exists (no key emitted)."""
+    if nd.get("key"):
+        return f"v{nd['key']}"
+    m = _NODE_VALUE_RE.search(nd.get("label", ""))
+    return f"v{m.group(0)}" if m else None
 
 
 def _e(s: Any) -> str:
@@ -94,14 +121,18 @@ def _arrow_v(x1: int, y1: int, x2: int, y2: int, color: str, marker_id: str) -> 
     )
 
 
-def _vbox(x: int, y: int, w: int, lines: list[tuple[str, str]], stroke: str) -> tuple[str, int]:
-    """Draw a rounded box at (x,y) with stacked text `lines` (each a
-    (text, color) pair). Height scales with the number of lines. Text is 14px
-    monospace to match the code panel. Returns (svg, height)."""
+def _vbox(x: int, y: int, w: int, lines: list[tuple[str, str]], stroke: str,
+          stroke_width: int = 2, rx: int = 8) -> tuple[str, int]:
+    """Draw a box at (x,y) with stacked text `lines` (each a (text, color)
+    pair). Height scales with the number of lines. Text is 14px monospace to
+    match the code panel. `stroke_width` thickens the border for an emphasised
+    (highlighted) box. `rx` is the corner radius — pass ``rx=0`` for square
+    corners so consecutive contiguous cells abut into one block. Returns
+    (svg, height)."""
     h = _BOX_TOP_PAD + len(lines) * _LH
     parts = [
-        f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="8" '
-        f'fill="{_BOX_FILL}" stroke="{stroke}" stroke-width="2"/>'
+        f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="{rx}" '
+        f'fill="{_BOX_FILL}" stroke="{stroke}" stroke-width="{stroke_width}"/>'
     ]
     ty = y + _BOX_TOP_PAD + _SVG_TEXT_ASCENDER
     for txt, color in lines:
@@ -189,17 +220,37 @@ def _stack_svg(p: str, title: str, desc: str,
 
 
 def _wrap_svg(p: str, title_text: str, desc_text: str, body: str,
-              *, vb_w: int = 500, vb_h: int = 160) -> str:
+              *, vb_w: int = 500, vb_h: int = 160, fill_width: bool = False,
+              natural: bool = False) -> str:
     """Wrap *body* in an accessible SVG shell. `p` is the unique id prefix.
-    `vb_w`/`vb_h` set the viewBox. `max-width:{vb_w}px; height:auto` keeps the
-    diagram at its intrinsic aspect and caps it so 14 user-units ≈ 14px (matching
-    the code panel) in the common case, scaling down only on very narrow screens."""
+    `vb_w`/`vb_h` set the viewBox. Default sizing is `width:{vb_w}px; max-width:100%;
+    height:auto`: the box renders at its intrinsic width (14 user-units ≈ 14px,
+    matching the code panel), capped to 100% of its container so it scales *down*
+    in a narrow column — right for the fixed-scale pointer/memory diagrams.
+
+    `fill_width=True` uses `width:100%` instead, so the SVG scales UP to fill its
+    column (right for a chart, which has no natural pixel size). This is safe with
+    the current `zoomable`, which scales the content IN PLACE (normal flow, keeps
+    its column width) — the old fit-content overlay that collapsed a percentage
+    width is gone, so there is no definite-basis problem anymore.
+
+    `natural=True` renders at exactly `width:{vb_w}px` with NO `max-width` cap, so
+    the SVG NEVER scales down — its font stays a constant 14px regardless of the
+    column width. Used for box-chains (whose node width is fixed, so they fit the
+    column at 1:1); the caller wraps them in an `overflow-x:auto` container so an
+    over-wide one scrolls instead of shrinking the font."""
     title_id = f"{p}-title"
     desc_id = f"{p}-desc"
+    if fill_width:
+        size_css = "width:100%;max-width:100%"
+    elif natural:
+        size_css = f"width:{vb_w}px"          # intrinsic size, never scaled down
+    else:
+        size_css = f"width:{vb_w}px;max-width:100%"
     return (
         f'<svg viewBox="0 0 {vb_w} {vb_h}" role="img" '
         f'aria-labelledby="{title_id} {desc_id}" '
-        f'style="width:100%;max-width:{vb_w}px;height:auto;background:#fff;'
+        f'style="{size_css};height:auto;background:#fff;'
         f'border:1px solid #c5cee0;border-radius:8px">'
         f'<title id="{title_id}">{_e(title_text)}</title>'
         f'<desc id="{desc_id}">{_e(desc_text)}</desc>'
@@ -276,6 +327,378 @@ def _svg_weak(pd: dict, p: str) -> str:
     return _stack_svg(p, "weak_ptr diagram",
                       f"weak_ptr at {_e(ptr_addr)}, expired={_e(expired)}, use_count={_e(use_count)}.",
                       [src], None)
+
+
+def _svg_boxchain(spec: "dict | None", p: str, link_values: bool = False) -> str:
+    """Render a declarative vertical box-chain diagram.
+
+    `spec` is a dict: ``nodes`` (each ``{id, label, rows?}``), ``links``
+    (each ``{from, to, label?, live?}``), and an optional ``note``. Boxes are
+    stacked top->bottom in ``nodes`` order and connected by downward arrows;
+    a ``live`` link is drawn in the accent color. Width auto-sizes to the widest
+    line (box rows, note, and link labels) so text never clips. All visual style comes from the module-level
+    constants, so one edit restyles every box-chain diagram."""
+    spec = spec or {}
+    nodes = spec.get("nodes", [])
+    links = spec.get("links", [])
+    note = spec.get("note")
+    has_rev = any(lk.get("rev") for lk in links)
+
+    if link_values:
+        seen_keys: dict[str, int] = {}
+        for _nd in nodes:
+            if _nd.get("kind") == "label":
+                continue
+            _k = _node_key(_nd)
+            if _k:
+                seen_keys[_k] = seen_keys.get(_k, 0) + 1
+        _dupes = [k for k, n in seen_keys.items() if n > 1]
+        if _dupes:
+            warnings.warn(
+                f"tri-link: ambiguous duplicate box value(s) {_dupes} in {p} — "
+                f"add an explicit `key:` to disambiguate.", stacklevel=2)
+    _FWD_X = 10   # px offset from center so forward/backward arrows don't overlap
+
+    char_w = 8.5          # ~advance of one 14px ui-monospace glyph
+    min_w = _SRC_W1       # 160; never narrower than the memory boxes
+    marker_id = f"{p}-ah"
+    marker_live = f"{p}-ahL"
+    marker_rev = f"{p}-ahR"
+
+    # 1. width = widest single line across all boxes (label + rows), padded.
+    def _lines(nd):
+        return [nd.get("label", "")] + list(nd.get("rows", []) or [])
+    longest = 0
+    for nd in nodes:
+        for ln in _lines(nd):
+            longest = max(longest, len(ln))
+    # Link labels are drawn beside the arrows; include them so the viewBox is wide
+    # enough. The NOTE is NOT included — it is pulled out of the SVG and rendered as
+    # a wrapping HTML caption below (so a long note never widens the diagram; every
+    # box-chain stays the fixed node width, mirroring stepped_boxchain's caption).
+    for lk in links:
+        if lk.get("label"):
+            longest = max(longest, len(lk["label"]))
+    # Node boxes are a FIXED width (uniform across every example and demo). The
+    # viewBox extends past it only if a node/link line is wider (rare — then it
+    # scrolls); `min_w` floors it so a lone long line never clips.
+    w = _BOXCHAIN_NODE_W
+    content_w = max(min_w, int(longest * char_w) + 2 * _PAD)
+
+    def _render_node(nd, bx, by):
+        """Render one box at (bx, by); return (svg, height). Handles dim/hl styling,
+        contig square corners, and the tri-link cll-node wrapper. Shared by the main
+        vertical stack and the right-hand `aside` column."""
+        dim = nd.get("dim")
+        label_color = _DIM_COLOR if dim else _LABEL_COLOR
+        lines = [(nd.get("label", ""), label_color)]
+        for r in (nd.get("rows") or []):
+            lines.append((r, _DIM_COLOR))
+        # `hl: true` marks the node this step acts on — accent border, drawn thicker.
+        if nd.get("hl"):
+            stroke, sw = _LIVE_COLOR, 3
+        elif dim:
+            stroke, sw = _DIM_COLOR, 2
+        else:
+            stroke, sw = _BOX_STROKE, 2
+        svg, h = _vbox(bx, by, w, lines, stroke, stroke_width=sw,
+                       rx=0 if nd.get("contig") else 8)
+        key = _node_key(nd) if link_values else None
+        if key:
+            # A focusable, named group so the tri-link handler can light this box
+            # and keyboard users can reach it. Highlight is a stroke change, not colour.
+            aria = _e(" ".join(
+                nd.get("label", "").replace("node:", "list node").split()))
+            svg = (f'<g class="cll-node" data-cll="{_e(key)}" tabindex="0" '
+                   f'role="img" aria-label="{aria}">{svg}</g>')
+        return svg, h
+
+    # 2. stack boxes top->bottom, remembering each box's y-range and center-x.
+    body = _marker_defs(marker_id, _ARROW_COLOR) + _marker_defs(marker_live, _LIVE_COLOR)
+    if has_rev:
+        body += _marker_defs(marker_rev, _REV_COLOR)
+    x = _PAD
+    cx = x + w // 2
+    y = _PAD
+    geom = {}   # id -> (top, bottom)
+    for idx, nd in enumerate(nodes):
+        # `aside: true` — a detached node (e.g. a just-unlinked list node) is not
+        # part of the chain. It is rendered separately (below the caption) by
+        # stepped_boxchain, so the chain SVG stays narrow; here it is skipped.
+        if nd.get("aside"):
+            continue
+        # A `kind: label` node is a group header (e.g. "list a") — bold text with a
+        # rule, no box, no ports; links never attach to it. It lets ONE diagram show
+        # two lists (source + destination) stacked as labelled groups, e.g. splice.
+        if nd.get("kind") == "label":
+            body += (
+                f'<text x="{x}" y="{y + _FONT}" font-size="14" '
+                f'font-family="system-ui" font-weight="700" '
+                f'fill="{_LABEL_COLOR}">{_e(nd.get("label", ""))}</text>'
+                f'<line x1="{x}" y1="{y + _LH + 2}" x2="{x + w}" y2="{y + _LH + 2}" '
+                f'stroke="{_BOX_STROKE}" stroke-width="1"/>'
+            )
+            h = _LH + 6
+            geom[nd.get("id", "")] = (y, y + h)
+            y += h + _BOX_GAP
+            continue
+        # `dim: true` fades a box (grey border + grey text) for a node that is
+        # deliberately NOT part of the action — e.g. the EXCLUDED `last` boundary of
+        # a half-open splice range, which stays put while the range moves.
+        # `contig: true` models contiguous memory (e.g. a vector's slots): between
+        # two consecutive contig cells there is zero gap, so they abut into one block
+        # (a shared divider), unlike gap-and-arrow-separated list nodes.
+        svg, h = _render_node(nd, x, y)
+        body += svg
+        geom[nd.get("id")] = (y, y + h)
+        nxt = nodes[idx + 1] if idx + 1 < len(nodes) else None
+        if nd.get("contig") and nxt and nxt.get("contig"):
+            y += h                         # contiguous cells share an edge (no gap)
+        else:
+            y += h + _ARROW_GAP
+    bottom_y = max(_PAD * 2, y - _ARROW_GAP + _PAD)   # last box bottom + padding; clamp so empty specs stay valid
+
+    # 3. arrows between linked boxes (downward); live link uses the accent marker.
+    #    When any link is bidirectional (rev:true), forward arrows shift right by
+    #    _FWD_X and a reverse (prev) arrow is drawn left by _FWD_X so they don't overlap.
+    for lk in links:
+        a, b = geom.get(lk.get("from")), geom.get(lk.get("to"))
+        if not a or not b:
+            continue
+        fwd_x = cx + (_FWD_X if has_rev else 0)
+        color = _LIVE_COLOR if lk.get("live") else _ARROW_COLOR
+        mid = marker_live if lk.get("live") else marker_id
+        body += _arrow_v(fwd_x, a[1], fwd_x, b[0], color, mid)
+        if lk.get("label"):
+            body += _text(_PAD, (a[1] + b[0]) // 2, lk["label"], _DIM_COLOR, 13)
+        if lk.get("rev"):
+            rev_x = cx - _FWD_X
+            body += _arrow_v(rev_x, b[0], rev_x, a[1], _REV_COLOR, marker_rev)
+
+    # viewBox is the fixed node column, widened only if a node/link line needs it.
+    vb_h = bottom_y
+    vb_w = max(w + 2 * _PAD, content_w)
+    svg = _wrap_svg(p, "box-chain diagram",
+                    "A vertical chain of boxes connected by arrows.", body,
+                    vb_w=vb_w, vb_h=vb_h, natural=True)
+    # natural size => constant 14px font; scroll (not shrink) if a line is wider
+    # than the column. The note is a wrapping HTML caption BELOW the SVG, so its
+    # length never changes the diagram width — every box-chain is the same size.
+    note_html = f'<p class="dia-note">{_e(note)}</p>' if note else ""
+    return f'<div class="dia-scroll">{svg}</div>{note_html}'
+
+
+def _pc_scale(v: float, lo: float, hi: float, scale: str) -> float:
+    """Map value v in [lo,hi] to a 0..1 fraction under 'linear' or 'log'."""
+    if scale == "log":
+        lo = max(lo, 1e-9)
+        v = max(v, lo)
+        return (math.log10(v) - math.log10(lo)) / (math.log10(hi) - math.log10(lo) or 1.0)
+    return (v - lo) / ((hi - lo) or 1.0)
+
+
+_SUPERSCRIPT = str.maketrans("0123456789-", "⁰¹²³⁴⁵⁶⁷⁸⁹⁻")
+
+
+def _pow10_label(v: float) -> str:
+    """Consistent axis-tick label. Exact powers of ten render as ``10ⁿ`` (short
+    and unambiguous on a log axis, no mixed 1e+08/100000 clutter); any non-power
+    fallback value uses compact ``{:g}``."""
+    if v > 0:
+        e = round(math.log10(v))
+        if abs(v - 10.0 ** e) <= 1e-6 * v:
+            return "10" + str(e).translate(_SUPERSCRIPT)
+    return f"{v:g}"
+
+
+def _nice_ticks(lo: float, hi: float) -> list[float]:
+    """Decade axis-tick values: every power of ten within ``[lo, hi]``. Suits a
+    LOG axis over positive data (the bubble-vs-quicksort log-log consumer) and is
+    labelled ``10ⁿ`` by :func:`_pow10_label`. Positions are recomputed per-scale
+    by the renderer/JS from each tick's raw value.
+
+    Pure decades avoid the collide-and-mixed-format clutter of also plotting the
+    raw data min/max as ticks. If fewer than two decades fall in range (a
+    sub-decade span), fall back to the endpoints so the axis still shows two
+    labels. A linear-scale line chart would get sparse/geometric ticks -- make
+    this helper scale-aware before authoring a linear-axis line consumer.
+    Degenerate lo==hi -> a single tick."""
+    if hi <= lo:
+        return [lo]
+    decades: list[float] = []
+    p = 10.0 ** math.floor(math.log10(lo)) if lo > 0 else 1.0
+    while p <= hi * (1 + 1e-9):
+        if p >= lo * (1 - 1e-9):
+            decades.append(p)
+        p *= 10.0
+    return decades if len(decades) >= 2 else [lo, hi]
+
+
+def _svg_perf_chart(spec: dict, points: list[dict], p: str) -> str:
+    """Vertical themed bar chart. Bars carry raw data-y + data-cll for the
+    y-axis toggle (Task 6) and console-hover (existing _CLL_JS)."""
+    mode = spec.get("mode", "bar")
+    if mode in ("line", "scatter"):
+        return _svg_perf_line(spec, points, p, connect=(mode == "line"))
+    y_scale = (spec.get("y") or {}).get("scale", "linear")
+    y_label = (spec.get("y") or {}).get("label", "")
+    plot_top, plot_bot, plot_left = 24, 240, 54
+    bar_w, gap = 64, 56
+    ys = [pt["y"] for pt in points] or [1.0]
+    # linear bars start at 0; log bars start at 1 (10^0) so a bar's height is
+    # proportional to its order of magnitude and the smallest bar stays visible
+    # instead of collapsing to the floor (which happens if the baseline == min).
+    lo = 0.0 if y_scale == "linear" else 1.0
+    hi = max(ys)
+    vb_w = plot_left + len(points) * (bar_w + gap) + 16
+    body = [
+        f'<line x1="{plot_left}" y1="{plot_top}" x2="{plot_left}" y2="{plot_bot}" stroke="var(--border)"/>',
+        f'<line x1="{plot_left}" y1="{plot_bot}" x2="{vb_w-6}" y2="{plot_bot}" stroke="var(--border)"/>',
+        f'<text x="6" y="{plot_top+8}" class="pc-axis">{_e(y_label)}</text>',
+    ]
+    x = plot_left + gap
+    for pt in points:
+        frac = _pc_scale(pt["y"], lo, hi, y_scale)
+        h = max(2, round(frac * (plot_bot - plot_top)))
+        y0 = plot_bot - h
+        key = pt.get("cll", "")
+        attr = f' data-cll="{_e(key)}"' if key else ""
+        body.append(
+            f'<rect class="pc-bar" data-y="{pt["y"]}" data-raw="{_e(pt["raw"])}"'
+            f'{attr} x="{x}" y="{y0}" width="{bar_w}" height="{h}"'
+            f'><title>{_e(pt["raw"])}</title></rect>'
+        )
+        body.append(
+            f'<text class="pc-cat" x="{x+bar_w/2:.0f}" y="{plot_bot+20}" '
+            f'text-anchor="middle">{_e(pt.get("label",""))}</text>'
+        )
+        x += bar_w + gap
+    # Hover readout: filled by the _CLL_JS mouseover handler with the hovered
+    # bar's verbatim console substring (data-raw). Rendered last (on top).
+    body.append(
+        f'<text class="pc-tip" x="{vb_w/2:.0f}" y="16" text-anchor="middle"></text>'
+    )
+    svg = (
+        f'<g data-pc data-pc-scale="{y_scale}">' + "".join(body) + "</g>"
+    )
+    return _wrap_svg(p, "perf chart",
+                     f"bar chart of measured values; y-axis {y_scale} scale",
+                     svg, vb_w=vb_w, vb_h=plot_bot + 30, fill_width=True)
+
+
+def _svg_perf_line(spec: dict, points: list[dict], p: str, *, connect: bool) -> str:
+    """Multi-series line/scatter chart. Each series is one polyline (+ markers);
+    scatter omits the connector. Both axes map through _pc_scale; the chart <g>
+    carries plot geometry as data-* so the _CLL_JS toggle recomputes coordinates
+    client-side (R1). Markers carry data-x/data-y/data-raw/data-cll for hover
+    (reused console-link handler)."""
+    x_scale = (spec.get("x") or {}).get("scale", "linear")
+    y_scale = (spec.get("y") or {}).get("scale", "linear")
+    x_label = (spec.get("x") or {}).get("label", "")
+    y_label = (spec.get("y") or {}).get("label", "")
+    L, R, T, B = 56, 404, 24, 240          # plot box: left, right, top, bottom
+    xs = [pt["x"] for pt in points] or [0.0, 1.0]
+    ys = [pt["y"] for pt in points] or [0.0, 1.0]
+
+    def _rng(vals, scale):
+        hi = max(vals)
+        if scale == "log":
+            pos = [v for v in vals if v > 0]
+            lo = min(pos) if pos else 1.0
+            return lo, max(hi, lo * 10)   # keep hi > lo > 0 so log10 is safe
+        return min(vals), hi
+
+    xlo, xhi = _rng(xs, x_scale)
+    ylo, yhi = _rng(ys, y_scale)
+
+    def _px(x):
+        return L + _pc_scale(x, xlo, xhi, x_scale) * (R - L)
+
+    def _py(y):
+        return B - _pc_scale(y, ylo, yhi, y_scale) * (B - T)
+
+    order: list[str] = []
+    series: dict[str, list[dict]] = {}
+    for pt in points:
+        s = pt.get("series", "")
+        if s not in series:
+            series[s] = []
+            order.append(s)
+        series[s].append(pt)
+
+    xticks = _nice_ticks(xlo, xhi)
+    yticks = _nice_ticks(ylo, yhi)
+    body = []
+    # Gridlines first, so they sit behind the axes, curves, and markers. Each
+    # carries its raw data value so the _CLL_JS toggle repositions it in step
+    # with the ticks/markers (R1).
+    for tx in xticks:
+        gx = _px(tx)
+        body.append(
+            f'<line class="pc-grid pc-xgrid" data-x="{tx}" x1="{gx:.1f}" y1="{T}" '
+            f'x2="{gx:.1f}" y2="{B}" stroke="var(--border)" stroke-opacity="0.5" '
+            f'stroke-dasharray="3 3"/>')
+    for ty in yticks:
+        gy = _py(ty)
+        body.append(
+            f'<line class="pc-grid pc-ygrid" data-y="{ty}" x1="{L}" y1="{gy:.1f}" '
+            f'x2="{R}" y2="{gy:.1f}" stroke="var(--border)" stroke-opacity="0.5" '
+            f'stroke-dasharray="3 3"/>')
+    body += [
+        f'<line x1="{L}" y1="{T}" x2="{L}" y2="{B}" stroke="var(--border)"/>',
+        f'<line x1="{L}" y1="{B}" x2="{R}" y2="{B}" stroke="var(--border)"/>',
+        f'<text x="6" y="14" class="pc-axis">{_e(y_label)}</text>',
+        f'<text x="{R}" y="{B+30}" text-anchor="end" class="pc-axis">{_e(x_label)}</text>',
+    ]
+    for tx in xticks:
+        body.append(
+            f'<text class="pc-tick pc-xtick" data-x="{tx}" x="{_px(tx):.1f}" '
+            f'y="{B+16}" text-anchor="middle">{_pow10_label(tx)}</text>')
+    for ty in yticks:
+        body.append(
+            f'<text class="pc-tick pc-ytick" data-y="{ty}" x="{L-6}" '
+            f'y="{_py(ty):.1f}" dominant-baseline="middle" '
+            f'text-anchor="end">{_pow10_label(ty)}</text>')
+
+    for i, s in enumerate(order):
+        color = _FRAME_STROKES[i % len(_FRAME_STROKES)]
+        pts = series[s]
+        if connect and len(pts) > 1:
+            coords = " ".join(f"{_px(pt['x']):.1f},{_py(pt['y']):.1f}" for pt in pts)
+            body.append(
+                f'<polyline class="pc-line" data-series="{_e(s)}" points="{coords}" '
+                f'fill="none" stroke="{color}" stroke-width="2"/>')
+        for pt in pts:
+            key = pt.get("cll", "")
+            attr = f' data-cll="{_e(key)}"' if key else ""
+            body.append(
+                f'<circle class="pc-pt" data-series="{_e(s)}" data-x="{pt["x"]}" '
+                f'data-y="{pt["y"]}" data-raw="{_e(pt["raw"])}"{attr} '
+                f'cx="{_px(pt["x"]):.1f}" cy="{_py(pt["y"]):.1f}" r="4" '
+                f'fill="{color}"><title>{_e(pt["raw"])}</title></circle>')
+
+    if len(order) > 1:
+        ly = T + 4
+        for i, s in enumerate(order):
+            color = _FRAME_STROKES[i % len(_FRAME_STROKES)]
+            body.append(
+                f'<rect class="pc-legend" x="{R-90}" y="{ly}" width="10" height="10" '
+                f'fill="{color}"/>'
+                f'<text class="pc-legend" x="{R-76}" y="{ly+9}">{_e(s)}</text>')
+            ly += 16
+
+    body.append(
+        f'<text class="pc-tip" x="{(L+R)//2}" y="16" text-anchor="middle"></text>')
+
+    svg = (
+        f'<g data-pc data-pc-xscale="{x_scale}" data-pc-yscale="{y_scale}" '
+        f'data-l="{L}" data-r="{R}" data-t="{T}" data-b="{B}">'
+        + "".join(body) + "</g>"
+    )
+    return _wrap_svg(p, "perf chart",
+                     f"line chart of measured (x, y) pairs; "
+                     f"x-axis {x_scale}, y-axis {y_scale} scale",
+                     svg, vb_w=R + 16, vb_h=B + 36, fill_width=True)
 
 
 def _svg_unknown(pd: dict, p: str) -> str:
@@ -702,6 +1125,13 @@ details.concept:has(+ details.concept.chip-inline) {
 }
 figure { margin: 0; flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
 figcaption { color: var(--fg-dim); font-size: .85rem; margin-top: .3rem; flex-shrink: 0; }
+.pc-bar { fill: var(--accent); }
+.pc-bar:hover { fill: var(--accent); stroke: var(--fg); stroke-width: 2; }
+.pc-cat, .pc-axis { fill: var(--fg-dim); font-size: 10px; }
+.pc-tip { fill: var(--fg); font-size: 11px; font-weight: 700; }
+.pc-fig { margin: 0; }
+.pc-toggle { display: flex; gap: 6px; justify-content: center; margin: 4px 0; }
+.pc-toggle button[aria-pressed="true"], .pc-toggle button:focus { outline: 2px solid var(--accent); }
 """
 
 
