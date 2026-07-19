@@ -242,6 +242,11 @@ def _build_topic(args: dict, data: dict) -> str:
     ``diagram_spec`` (optional, per-variant): a dict keyed by variant label; each
     value is a ``{nodes, links, note?}`` box-chain description rendered as a
     ``Structure`` SVG (paired with ``steps`` as diagram sub-tabs when both exist).
+
+    ``aside_html`` (optional, per-variant): a dict keyed by the EXACT variant/tab
+    label; each value is raw (unescaped) author HTML rendered in the right
+    column of that tab, above the Key Idea aside — which then moves inside the
+    tabs (ENGINE_REQUEST_prompt-panel). ``diagram: false`` topics only.
     """
     return C.demo_panel(args["id"], data[args["source"]],
                         diagram=args.get("diagram", True),
@@ -249,6 +254,7 @@ def _build_topic(args: dict, data: dict) -> str:
                         concept_title=args.get("concept_title", "Key Idea"),
                         steps=args.get("steps"),
                         diagram_spec=args.get("diagram_spec"),
+                        aside_html=args.get("aside_html"),
                         gauge=args.get("gauge", False),
                         console_link=args.get("console_link", False),
                         link_diagram=args.get("link_diagram", False))

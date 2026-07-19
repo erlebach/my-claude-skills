@@ -57,12 +57,14 @@ _BUILDER_INFO: dict[str, tuple[str, str, str]] = {
                 "A section heading (h2 by default)."),
     "html": ("(raw passthrough)", "content",
              "Author-supplied HTML inserted verbatim."),
-    "topic": ("demo_panel", "source, diagram, gauge, console_link",
+    "topic": ("demo_panel", "source, diagram, gauge, console_link, aside_html",
               "A compiled topic: code + real g++ output, with an optional "
               "memory diagram (diagram: false to suppress), an optional "
-              "build-derived step_gauge (gauge: true, fed by GAUGE: markers), and "
-              "an optional bidirectional console↔source hover link "
-              "(console_link: true, fed by /*[hl]*/ marked cout lines)."),
+              "build-derived step_gauge (gauge: true, fed by GAUGE: markers), an "
+              "optional bidirectional console↔source hover link "
+              "(console_link: true, fed by /*[hl]*/ marked cout lines), and an "
+              "optional per-variant right-column HTML slot (aside_html: a map "
+              "keyed by tab label; raw HTML, diagram: false topics only)."),
     "concept": ("concept_note", "text, label, open",
                 "One example's fold-away Concept note (native <details>)."),
     "glossary_note": ("glossary_note", "terms, label, open",

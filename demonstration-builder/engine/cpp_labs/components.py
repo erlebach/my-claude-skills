@@ -35,6 +35,9 @@ from .html_renderer import (
     SEMANTIC_PALETTE,
     svg_renderer,
     _svg_boxchain,
+    _svg_tree,
+    _svg_buckets,
+    _svg_set,
     _svg_frames_anatomy,
     _svg_perf_chart,
     _parse_frames,
@@ -1335,6 +1338,39 @@ def zoomable(comp_id: str, inner_html: str, *, label: str = "⤢ Enlarge") -> st
     )
 
 
+def _concept_aside_body(title: str, text: str) -> str:
+    """The Key Idea aside's inner markup, shared by both aside renderers.
+
+    Extracted so the outer two-column panel (:func:`code_concept_panel`) and the
+    standalone in-tab aside (:func:`_concept_aside`) compose the identical
+    (escaped) content — one place to change the aside's body.
+    """
+    return (f'<b class="ccp-title">{_e(title)}</b>'
+            f'<p style="margin:0">{_e(text)}</p>')
+
+
+def _concept_aside(comp_id: str, text: str, *, title: str = "Key Idea") -> str:
+    """The Key Idea aside as a standalone block, for INSIDE a tab panel.
+
+    Same look as the aside :func:`code_concept_panel` renders (same body, same
+    box styles), but self-scoped (own id + <style>) so it can sit in a
+    per-variant right column — the ``aside_html`` stack
+    (ENGINE_REQUEST_prompt-panel) — instead of the outer two-column wrap.
+    """
+    p = _safe(comp_id)
+    style = (
+        f"#{p} {{ min-width: 0; max-height: calc(100vh - 4rem); overflow-y: auto;"
+        f" border-left: 4px solid var(--accent); background: var(--panel-bg);"
+        f" border-radius: 0 6px 6px 0; padding: .5rem .8rem; }}\n"
+        f"#{p} .ccp-title {{ display: block; font-weight: 700; margin-bottom: .3rem; }}"
+    )
+    return (
+        f'<aside id="{p}" class="ccp-aside">\n<style>\n{style}\n</style>\n'
+        + _concept_aside_body(title, text)
+        + "</aside>\n"
+    )
+
+
 def code_concept_panel(comp_id: str, main_html: str, concept_text: str,
                        *, title: str = "Key Idea") -> str:
     """Two-column split: the demo on the left, a titled Key Idea aside on the right.
@@ -1364,6 +1400,7 @@ def code_concept_panel(comp_id: str, main_html: str, concept_text: str,
         # Top-aligned aside sized to its own content (no forced stretch, so a
         # short concept never leaves a tall empty box); capped to the viewport
         # and scrolls internally so a long concept never stretches the page.
+        # Box styles mirrored in _concept_aside (drift guard: test_aside_box_styles_match_outer_panel).
         f"#{p} .ccp-aside {{ min-width: 0; max-height: calc(100vh - 4rem); overflow-y: auto;"
         f" border-left: 4px solid var(--accent); background: var(--panel-bg);"
         f" border-radius: 0 6px 6px 0; padding: .5rem .8rem; }}\n"
@@ -1374,9 +1411,8 @@ def code_concept_panel(comp_id: str, main_html: str, concept_text: str,
         f'<div id="{p}" class="ccp">\n<style>\n{style}\n</style>\n'
         f'<div class="ccp-main">{main_html}</div>\n'
         f'<aside class="ccp-aside">'
-        f'<b class="ccp-title">{_e(title)}</b>'
-        f'<p style="margin:0">{_e(concept_text)}</p>'
-        f"</aside>\n"
+        + _concept_aside_body(title, concept_text)
+        + "</aside>\n"
         f"</div>\n"
     )
 
@@ -1763,7 +1799,9 @@ def _console_body(pid: str, v: dict) -> str:
 
 def _demo_variant_body(pid: str, v: dict, caption: str, diagram: bool = True,
                        *, step_diagram: dict | None = None,
-                       boxchain: "dict | list | None" = None, byte_decode: str = "",
+                       struct_spec: "dict | list | None" = None, byte_decode: str = "",
+                       aside_slot: str = "", concept_aside: str = "",
+                       aside_grid: bool = False,
                        gauge: bool = False, console_link: bool = False,
                        link_diagram: bool = False) -> str:
     """One compiled program: code+diagram split, badge, output, collapsed bytes.
@@ -1774,6 +1812,12 @@ def _demo_variant_body(pid: str, v: dict, caption: str, diagram: bool = True,
 
     ``diagram=False`` drops the memory diagram (and the two-column split),
     showing the code full-width — for subjects with no memory-model picture.
+
+    ``aside_slot``/``concept_aside`` (both pre-rendered HTML) form the right-
+    column stack for ``diagram=False`` variants — the prompt slot above the
+    in-tab Key Idea aside (ENGINE_REQUEST_prompt-panel). ``aside_grid`` forces
+    the two-column grid for these variants even when both are empty, so the
+    code-column width never changes between tabs.
 
     When ``diagram=True`` but this variant has no ``ptrdata`` (a compile-error
     gotcha or a value-pass tab), the two-column grid is KEPT — so the code
@@ -1811,19 +1855,31 @@ def _demo_variant_body(pid: str, v: dict, caption: str, diagram: bool = True,
         left = console_line_link(f"{pid}-cll", v["link_source"], v["link_console"])
     else:
         left = v["code_html"] + _console_body(pid, v)
-    if diagram and (boxchain or step_diagram or gauge_html or perf_html):
+    if diagram and (struct_spec or step_diagram or gauge_html or perf_html):
         # Structural SVG (declarative box-chain), the paced steps stepper, and/or
         # the step-gauge. When more than one exists they become sub-tabs on the
         # diagram panel; a single one fills the column directly. Whole thing zooms.
         reps = []
-        if boxchain:
-            if isinstance(boxchain, list):
+        if struct_spec:
+            if isinstance(struct_spec, list):
                 reps.append(("Structure", stepped_boxchain(
-                    f"{pid}-bc", boxchain,
+                    f"{pid}-bc", struct_spec,
                     link_values=(link_diagram and have_link))))
             else:
-                reps.append(("Structure", _svg_boxchain(boxchain, f"{pid}-bc",
-                             link_values=(link_diagram and have_link))))
+                kind = struct_spec.get("kind", "chain")
+                if kind == "tree":
+                    reps.append(("Structure", _svg_tree(struct_spec, f"{pid}-tr")))
+                elif kind == "buckets":
+                    reps.append(("Structure", _svg_buckets(struct_spec, f"{pid}-bk")))
+                elif kind == "set":
+                    reps.append(("Structure", _svg_set(struct_spec, f"{pid}-st")))
+                elif kind == "chain":
+                    reps.append(("Structure", _svg_boxchain(struct_spec, f"{pid}-bc",
+                                 link_values=(link_diagram and have_link))))
+                else:
+                    raise ValueError(
+                        f"_demo_variant_body: unknown struct_spec kind {kind!r} "
+                        f"(expected 'chain', 'tree', 'buckets', or 'set')")
         if step_diagram:
             items = [(s["summary"], _e(s["detail"]))
                      for s in step_diagram.get("items", [])]
@@ -1869,8 +1925,19 @@ def _demo_variant_body(pid: str, v: dict, caption: str, diagram: bool = True,
             diagram_html = memory_diagram(f"{pid}-md", pd) if pd else ""
         code_block = code_diagram_panel(f"{pid}-cdp", left,
                                         diagram_html, ratio=ratio)
+    elif aside_grid:
+        # No diagram, but the aside pathway (ENGINE_REQUEST_prompt-panel) claims
+        # the right column: the per-variant prompt slot above the in-tab Key
+        # Idea aside. The grid renders for EVERY tab in the group — even one
+        # whose slot and concept are both empty (an empty right cell) — so the
+        # code column's width never changes between tabs (same invariant as the
+        # kept-grid empty-diagram case above).
+        code_block = code_diagram_panel(f"{pid}-acp", left,
+                                        aside_slot + concept_aside,
+                                        ratio=(2, 1))
     else:
-        # No diagram: the linked block (or plain code+console) fills the width.
+        # No diagram and no aside grid: the linked block (or plain code+console)
+        # fills the width.
         code_block = left
     if link_diagram and have_link:
         code_block = f'<div data-cll-scope="{pid}">{code_block}</div>'
@@ -1894,6 +1961,7 @@ def _demo_variant_body(pid: str, v: dict, caption: str, diagram: bool = True,
 def demo_panel(comp_id: str, entry: dict, diagram: bool = True,
                *, concept: str | None = None, concept_title: str = "Key Idea",
                steps: dict | None = None, diagram_spec: dict | None = None,
+               aside_html: dict | None = None,
                gauge: bool = False, console_link: bool = False,
                link_diagram: bool = False) -> str:
     """One demo's inner content: a variant_tabs cluster over a topic's baked data.
@@ -1907,8 +1975,20 @@ def demo_panel(comp_id: str, entry: dict, diagram: bool = True,
     the otherwise-empty right column as a titled aside (see
     :func:`code_concept_panel`); with a diagram, the concept is left to the
     demo's own ``concept`` block and this argument is ignored.
+
+    ``aside_html`` (per-variant, keyed by tab label, values RAW/unescaped
+    HTML) puts each tab's slot in the right column beside its code, with the
+    Key Idea aside beneath it INSIDE the tab; the outer two-column wrap is
+    then skipped. Ignored when ``diagram`` is true, on output-tabs topics, and
+    on cases variants (ENGINE_REQUEST_prompt-panel).
     """
     cid = _safe(comp_id)
+
+    # aside_html (ENGINE_REQUEST_prompt-panel): a per-variant raw-HTML slot in
+    # the right column, keyed by tab label. Active only for diagram-less
+    # topics; on output_tabs and cases variants it is ignored (no consumer —
+    # YAGNI, see the request doc).
+    aside_active = bool(aside_html) and not diagram
 
     # Output-tabs layout (flag_variants topic): one source compiled at several
     # flag sets. Show the code ONCE, then tab only the console below it — the
@@ -1949,7 +2029,7 @@ def demo_panel(comp_id: str, entry: dict, diagram: bool = True,
         v = entry[label]
         pid = f"{cid}-{_safe(label)}"
         # cases-variants render stacked sub-cases; per-variant Structure/steps
-        # diagrams (boxchain/step_diagram) are not threaded here by design.
+        # diagrams (struct_spec/step_diagram) are not threaded here by design.
         if "cases" in v:
             subcases = []
             for j, case in enumerate(v["cases"]):
@@ -1962,14 +2042,20 @@ def demo_panel(comp_id: str, entry: dict, diagram: bool = True,
             body = _demo_variant_body(pid, v, byte_caption,
                                       diagram=diagram,
                                       step_diagram=(steps or {}).get(label),
-                                      boxchain=(diagram_spec or {}).get(label),
+                                      struct_spec=(diagram_spec or {}).get(label),
                                       byte_decode=decode,
+                                      aside_slot=((aside_html or {}).get(label, "")
+                                                  if aside_active else ""),
+                                      concept_aside=(_concept_aside(f"{pid}-ka", concept,
+                                                                    title=concept_title)
+                                                     if aside_active and concept else ""),
+                                      aside_grid=aside_active,
                                       gauge=gauge,
                                       console_link=console_link,
                                       link_diagram=link_diagram)
         panels.append((label, body))
     tabs = variant_tabs(cid, panels)
-    if concept and not diagram:
+    if concept and not diagram and not aside_active:
         return code_concept_panel(f"{cid}-ccp", tabs, concept, title=concept_title)
     return tabs
 

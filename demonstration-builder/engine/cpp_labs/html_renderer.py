@@ -56,6 +56,7 @@ _FONT = 14           # px, == code panel font-size (ui-monospace)
 _LH = 22             # text line height within a box
 _BOX_TOP_PAD = 20    # box top padding to first text baseline
 _SVG_TEXT_ASCENDER = 4  # SVG <text> y is the baseline; add this to reach the visual top of glyphs
+_TEXT_MID_DY = 5     # baseline nudge to vertically center 14px text in a box (~0.35*font)
 _PAD = 16            # outer padding / gap between boxes
 _SRC_W1 = 160        # source/target box width when a single source
 _SRC_W2 = 120        # source box width when two sources sit side-by-side
@@ -68,6 +69,26 @@ _BOX_GAP = 12  # inter-box vertical gap in the stacked column
 # boxes themselves never change width. Chosen to fill the ~393px diagram column
 # at natural (1:1) scale so the 14px font is identical in every box-chain.
 _BOXCHAIN_NODE_W = 340
+
+# --- branching-diagram (tree / bucket) fixed geometry ---------------------
+# Like the box-chain node width, these are UNIFORM across every demo so one edit
+# restyles every tree/bucket across the curriculum. Nodes are a fixed size; the
+# viewBox is driven by STRUCTURE (tree breadth/depth, bucket count/chain length),
+# never by label length — a too-long label scrolls, it never widens the diagram.
+_TREE_NODE_W = 96    # wider to fit "key → value" labels
+_TREE_NODE_H = 44
+_TREE_ROW_H = 84     # vertical pitch between tree depths
+_TREE_COL_W = 112    # horizontal pitch between in-order columns
+_BUCKET_SLOT_W = 54  # the [n] slot box
+_BUCKET_ENTRY_W = 100
+_BUCKET_BOX_H = 36
+_BUCKET_ROW_H = 50   # vertical pitch between buckets
+_BUCKET_GAP = 22     # horizontal gap (room for the chain connector)
+
+_SET_BOX_W = 48      # set element box (disconnected — no connectors)
+_SET_BOX_H = 44
+_SET_GAP = 16        # gap between disconnected set elements
+_SET_BRACE_W = 22    # width reserved for each set brace { }
 
 
 _NODE_VALUE_RE = re.compile(r"-?\d+")
@@ -484,6 +505,176 @@ def _svg_boxchain(spec: "dict | None", p: str, link_values: bool = False) -> str
     # natural size => constant 14px font; scroll (not shrink) if a line is wider
     # than the column. The note is a wrapping HTML caption BELOW the SVG, so its
     # length never changes the diagram width — every box-chain is the same size.
+    note_html = f'<p class="dia-note">{_e(note)}</p>' if note else ""
+    return f'<div class="dia-scroll">{svg}</div>{note_html}'
+
+
+def _centered_box(x: int, y: int, w: int, h: int, label: str, stroke: str) -> str:
+    """A fixed-size rounded box with a single 14px label centered both ways.
+    Shared by _svg_tree, _svg_buckets, and _svg_set (small nodes read better centered than
+    _vbox's left-aligned text). Fill/stroke come from the shared palette, so one
+    edit restyles every tree/bucket node."""
+    return (
+        f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="8" '
+        f'fill="{_BOX_FILL}" stroke="{stroke}" stroke-width="2"/>'
+        f'<text x="{x + w // 2}" y="{y + h // 2 + _TEXT_MID_DY}" font-size="{_FONT}" '
+        f'font-family="ui-monospace,monospace" text-anchor="middle" '
+        f'fill="{_LABEL_COLOR}">{_e(label)}</text>'
+    )
+
+
+def _svg_tree(spec: "dict | None", p: str) -> str:
+    """Render a declarative binary-tree diagram (map / set). `spec` keys:
+    ``nodes`` (each {id, label, left?, right?, root?}) and an optional ``note``.
+    A node's x is its IN-ORDER-traversal column and y is its depth, so the picture
+    reads left-to-right in sorted key order; edges are plain diagonal lines (a tree
+    edge is not a directional pointer). Fixed node size + `natural=True` sizing =>
+    a constant 14px font, mirroring _svg_boxchain. The note is an HTML `.dia-note`
+    caption (never SVG text), so its length never widens the diagram."""
+    spec = spec or {}
+    nodes = spec.get("nodes", [])
+    note = spec.get("note")
+    by_id = {nd["id"]: nd for nd in nodes}
+    root_id = next((nd["id"] for nd in nodes if nd.get("root")),
+                   nodes[0]["id"] if nodes else None)
+    order: list[str] = []
+    depth: dict[str, int] = {}
+    seen: set[str] = set()
+
+    def walk(nid, d):
+        if nid is None or nid not in by_id:
+            return
+        if nid in seen:
+            raise ValueError(
+                f"_svg_tree: node {nid!r} is reachable twice — cyclic or shared "
+                f"child reference in the tree spec")
+        seen.add(nid)
+        nd = by_id[nid]
+        walk(nd.get("left"), d + 1)
+        depth[nid] = d
+        order.append(nid)
+        walk(nd.get("right"), d + 1)
+
+    walk(root_id, 0)
+    col = {nid: i for i, nid in enumerate(order)}
+    max_depth = max(depth.values(), default=0)
+
+    def left_x(nid):
+        return _PAD + col[nid] * _TREE_COL_W
+
+    def cx(nid):
+        return left_x(nid) + _TREE_NODE_W // 2
+
+    def top_y(nid):
+        return _PAD + depth[nid] * _TREE_ROW_H
+
+    body = ""
+    # edges first so nodes overlay them
+    for nid in order:
+        nd = by_id[nid]
+        for child in (nd.get("left"), nd.get("right")):
+            if child in depth:
+                body += (
+                    f'<line x1="{cx(nid)}" y1="{top_y(nid) + _TREE_NODE_H}" '
+                    f'x2="{cx(child)}" y2="{top_y(child)}" '
+                    f'stroke="{_BOX_STROKE}" stroke-width="2"/>'
+                )
+    # nodes (root in the accent color, like the box-chain live path)
+    for nid in order:
+        nd = by_id[nid]
+        stroke = _LIVE_COLOR if nd.get("root") else _BOX_STROKE
+        body += _centered_box(left_x(nid), top_y(nid), _TREE_NODE_W, _TREE_NODE_H,
+                              nd.get("label", ""), stroke)
+    vb_w = _PAD * 2 + max(1, len(order)) * _TREE_COL_W
+    vb_h = _PAD * 2 + max_depth * _TREE_ROW_H + _TREE_NODE_H
+    svg = _wrap_svg(p, "binary-tree diagram",
+                    "An ordered binary tree; in-order traversal visits keys in sorted order.",
+                    body, vb_w=vb_w, vb_h=vb_h, natural=True)
+    note_html = f'<p class="dia-note">{_e(note)}</p>' if note else ""
+    return f'<div class="dia-scroll">{svg}</div>{note_html}'
+
+
+def _svg_buckets(spec: "dict | None", p: str) -> str:
+    """Render a declarative hash-bucket diagram (unordered_map). `spec` keys:
+    ``buckets`` (ordered; each {slot, entries}) and an optional ``note``. Buckets
+    stack vertically; each bucket's `entries` list lays out horizontally as a
+    collision chain joined by short connectors (a bucket IS a list — one entry is
+    a singleton, many is a chain). Empty buckets show a dim ∅. Fixed sizes +
+    `natural=True` => constant 14px font, mirroring _svg_boxchain."""
+    spec = spec or {}
+    buckets = spec.get("buckets", [])
+    note = spec.get("note")
+    body = ""
+    max_chain = 0
+    for i, b in enumerate(buckets):
+        entries = b.get("entries") or []
+        max_chain = max(max_chain, len(entries))
+        y = _PAD + i * _BUCKET_ROW_H
+        body += _centered_box(_PAD, y, _BUCKET_SLOT_W, _BUCKET_BOX_H,
+                              f"[{b.get('slot', i)}]", _BOX_STROKE)
+        if not entries:
+            body += _text(_PAD + _BUCKET_SLOT_W + _BUCKET_GAP,
+                          y + _BUCKET_BOX_H // 2 + _TEXT_MID_DY, "∅", _DIM_COLOR)
+            continue
+        prev_right = _PAD + _BUCKET_SLOT_W
+        cy = y + _BUCKET_BOX_H // 2
+        for entry in entries:
+            ex = prev_right + _BUCKET_GAP
+            body += (f'<line x1="{prev_right}" y1="{cy}" x2="{ex}" y2="{cy}" '
+                     f'stroke="{_BOX_STROKE}" stroke-width="2"/>')
+            body += _centered_box(ex, y, _BUCKET_ENTRY_W, _BUCKET_BOX_H,
+                                  str(entry), _BOX_STROKE)
+            prev_right = ex + _BUCKET_ENTRY_W
+    vb_w = _PAD * 2 + _BUCKET_SLOT_W + max(1, max_chain) * (_BUCKET_GAP + _BUCKET_ENTRY_W)
+    vb_h = _PAD * 2 + max(0, len(buckets) - 1) * _BUCKET_ROW_H + _BUCKET_BOX_H
+    svg = _wrap_svg(p, "hash-bucket diagram",
+                    "A hash table bucket array; each key lands in a bucket by its hash.",
+                    body, vb_w=vb_w, vb_h=vb_h, natural=True)
+    note_html = f'<p class="dia-note">{_e(note)}</p>' if note else ""
+    return f'<div class="dia-scroll">{svg}</div>{note_html}'
+
+
+def _svg_set(spec: "dict | None", p: str) -> str:
+    """Render a std::set as a DISCONNECTED sorted collection: unique elements as
+    separate boxes (NO edges) in sorted order, wrapped in set braces { }. Any
+    ``rejected`` duplicates are drawn dimmed and struck-through below the row. This
+    foregrounds the SET ABSTRACTION (unique + sorted, no hierarchy) rather than the
+    red-black-tree implementation (that story is map's). Fixed sizes + `natural=True`
+    => constant 14px font; the note is a `.dia-note` HTML caption, so its length
+    never widens the diagram."""
+    spec = spec or {}
+    elements = spec.get("elements", [])
+    rejected = spec.get("rejected") or []
+    note = spec.get("note")
+    n = len(elements)
+    x0 = _PAD + _SET_BRACE_W                        # first element x (after '{')
+    y = _PAD
+    cy = y + _SET_BOX_H // 2
+    brace_y = cy + 11                               # baseline for the 34px braces
+    body = (f'<text x="{_PAD}" y="{brace_y}" font-size="34" '
+            f'font-family="ui-monospace,monospace" fill="{_LABEL_COLOR}">{{</text>')
+    for i, el in enumerate(elements):
+        ex = x0 + i * (_SET_BOX_W + _SET_GAP)
+        body += _centered_box(ex, y, _SET_BOX_W, _SET_BOX_H, str(el), _BOX_STROKE)
+    last_right = x0 + (max(1, n) - 1) * (_SET_BOX_W + _SET_GAP) + _SET_BOX_W
+    close_x = last_right + _SET_GAP // 2
+    body += (f'<text x="{close_x}" y="{brace_y}" font-size="34" '
+             f'font-family="ui-monospace,monospace" fill="{_LABEL_COLOR}">}}</text>')
+    vb_h = _PAD * 2 + _SET_BOX_H
+    if rejected:
+        ry = y + _SET_BOX_H + _SET_GAP
+        for i, el in enumerate(rejected):
+            rx = x0 + i * (_SET_BOX_W + _SET_GAP)
+            box = _centered_box(rx, ry, _SET_BOX_W, _SET_BOX_H, str(el), _DIM_COLOR)
+            strike = (f'<line x1="{rx + 7}" y1="{ry + _SET_BOX_H // 2}" '
+                      f'x2="{rx + _SET_BOX_W - 7}" y2="{ry + _SET_BOX_H // 2}" '
+                      f'stroke="{_DIM_COLOR}" stroke-width="2"/>')
+            body += f'<g opacity="0.45">{box}{strike}</g>'
+        vb_h = _PAD * 2 + _SET_BOX_H + _SET_GAP + _SET_BOX_H
+    vb_w = close_x + _SET_BRACE_W + _PAD
+    svg = _wrap_svg(p, "set diagram",
+                    "A set drawn as a sorted collection of unique elements, with no hierarchy between them.",
+                    body, vb_w=vb_w, vb_h=vb_h, natural=True)
     note_html = f'<p class="dia-note">{_e(note)}</p>' if note else ""
     return f'<div class="dia-scroll">{svg}</div>{note_html}'
 
