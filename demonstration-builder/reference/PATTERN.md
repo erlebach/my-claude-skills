@@ -172,6 +172,39 @@ controls:
 - No dropdown → exactly one variant.
 - The human tab label = dropdown values joined with `" / "`.
 
+### Tab-label glyphs (correct vs mistake)
+When an example has a **mistake** variant, prefix `✅ ` / `❌ ` to **every** option label of
+that example (✅ = correct/recommended, ❌ = the mistake — failing at compile, link, *or*
+runtime; the glyph is the pedagogical verdict, not the compile outcome). Put the glyph in
+both the `options:` entry and its matching `value_map:` key (and `default:` if it names
+that option) — they must stay byte-identical. All-valid examples (different types/sizes/
+counts, or a pure mechanism contrast) stay unglyphed. Full rule: SKILL.md Step 2.
+
+### DRY the labels with YAML anchors (recommended)
+
+Each tab label is written up to three times (`options:`, `default:`, and its `value_map:`
+key). Instead of repeating the string, define it **once** as a YAML anchor (`&name`) in
+`options` and reference it by alias (`*name`) everywhere else:
+
+```yaml
+    options: [&t_bad "❌ end = last element (off-by-one)", &t_ok "✅ end = one-past (correct)"]
+    default: *t_bad
+    placeholder: <<prog>>
+    value_map:
+      *t_bad : |
+        ...program...
+      *t_ok : |
+        ...program...
+```
+
+`yaml.safe_load` resolves aliases-as-mapping-keys, so `options`, `default`, and every
+`value_map` key become the **same** scalar. This removes the duplication *and* makes the
+byte-identical-glyph requirement above impossible to violate — rename a label in one place
+and all uses follow. An anchored topic bakes byte-for-byte identically to the string-literal
+form. Two rules: pick anchor names with no spaces (`&t_bad`, not `&t bad`), and leave a
+space before the colon on an alias key (`*t_bad :`, not `*t_bad:`). Prefer this over any
+engine change — it is a pure-YAML fix that stays within the authoring layer.
+
 ---
 
 ## 5. `cases:` — Correct/Mistake and runtime gotchas
@@ -179,6 +212,13 @@ controls:
 A `CaseDef` has `label` (str) + `subs` (dict `placeholder → C++`). Each case is
 **compiled independently** and stacked inside the variant panel (`stacked_subcases`).
 `subs` fills placeholders that no control owns.
+
+**When to use `cases:` vs `controls:` tabs.** `cases:` renders **stacked** (all cases
+shown one below another), not as switchable tabs. Use it only for a **correct | mistake**
+pair meant to be read side-by-side, or when one variant needs **several code fragments
+together**. For distinct, self-contained alternative programs the student flips between,
+prefer a `controls:` dropdown (§4) so each becomes its own **tab**. (SKILL.md Step 2 has
+the full decision rule.)
 
 ### (a) Compile-error gotcha
 A wrong/empty fragment that genuinely fails to compile. Surfaces as a real red

@@ -225,3 +225,38 @@ The engine block that injects a static/custom SVG into the diagram column is als
 Mark this seam in authoring notes so future work knows where to extend: the skill's
 DIAGRAMS.md (this file) documents the contract; a later `diagram-generation` sub-skill
 implements it.
+
+### 5a. The `diagram_spec:` box-chain seam (built 2026-07-10)
+
+Case-2 structural diagrams no longer require hand-authored SVG. A demo `topic:`
+block may carry a per-variant **`diagram_spec:`** map (keyed by variant label,
+exactly like `steps:`). Each entry is a declarative description — no SVG markup,
+no coordinates:
+
+- `nodes`: `[{id, label, rows?}]` — a vertical stack of labelled boxes (optional
+  `rows` are extra lines inside a box; a `●` in a label/row marks a port).
+- `links`: `[{from, to, label?, live?}]` — downward arrows between node `id`s;
+  `live: true` draws that arrow in the accent color (the path that actually runs).
+- `note`: optional caption drawn under the chain.
+
+`html_renderer._svg_boxchain` renders it to a vertical, self-contained SVG
+(auto-width, `role="img"` via `_wrap_svg`), reusing the shared `_vbox`/`_arrow_v`
+helpers and the module-level style constants — so one edit restyles every box-chain
+diagram across the whole curriculum (the decisive advantage over SVG-in-YAML). When
+a variant has both `diagram_spec:` and `steps:`, they render as `Structure` /
+`Dispatch walk` sub-tabs inside a `zoomable` panel; either alone fills the column.
+
+Schema is deliberately Mermaid-shaped (a `nodes`/`links` graph) but rendered in
+Python — no client-side JS, no `mmdc`/Node build dependency, so the page stays
+self-contained and deterministic. First consumer: `inh_virtual` (the vtable). v1
+box-chain assumes a linear top-to-bottom chain. Non-linear structures are handled
+by three sibling renderers (built 2026-07-14/15): `_svg_tree` (binary tree — map;
+in-order-x layout, `kind: tree`), `_svg_buckets` (hash-bucket array with collision
+chains — unordered_map, `kind: buckets`), and `_svg_set` (a DISCONNECTED sorted
+collection `{ … }` with rejected duplicates ghosted+struck — `std::set`, `kind:
+set`; drawn disconnected because a set has no hierarchy between elements, unlike
+its red-black-tree implementation). All dispatch on the `kind:` field of a
+`diagram_spec` entry (default `chain` → `_svg_boxchain`); each mirrors the
+box-chain fixed-size / constant-14px-font invariant (fixed node dimensions,
+`natural=True`, note as a `.dia-note` HTML caption, structure-driven viewBox).
+First consumers: `stl_assoc` (map tree + unordered_map buckets + set collection).

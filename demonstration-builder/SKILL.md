@@ -84,6 +84,34 @@ Propose 2–4 named examples + at least one gotcha. For each, sketch one sentenc
 what it demonstrates and why it earns its own rail entry. Offer suggestions when the
 author is unsure — a good gotcha shows what happens when the rule is violated.
 
+**Variant mechanism (locked rule — tabs by default).** When an example's variants are
+distinct, self-contained programs the student flips between (one concept per view), use
+a `controls:` **dropdown** (`value_map`) so each variant becomes a real switchable
+**tab** — the whole program body fills one `<<prog>>` placeholder per option. Reach for
+`cases:` (which renders **stacked**, one code block below another, *not* tabbed) only
+when either:
+- the contrast is a **correct | mistake** pair meant to be read side-by-side (the wrong
+  version sits directly under the right one), or
+- a single variant genuinely needs **multiple code fragments shown together** (e.g. a
+  `<<member_op>>` + `<<free_op>>` split within one case).
+
+If you find yourself stacking several complete alternative programs in `cases:`, convert
+them to dropdown tabs. See `reference/PATTERN.md` §4 (tabs) vs §5 (stacked cases).
+
+**Tab-label glyphs (locked rule — correct vs mistake).** When an example contains a
+**mistake** variant — one the lesson warns against, whether it fails at **compile**,
+**link**, *or* **runtime** (a crash, UB, a leak, or plain wrong output) — prefix a glyph
+to **every** tab label of that example so the precomputed verdict is visible in the tab
+bar: `✅ ` on each correct/recommended variant, `❌ ` on the mistake. The glyph is a
+*pedagogical* verdict, not the compile outcome: a `❌` tab may compile fine and only fail
+at runtime (e.g. a double-free), and a `✅` tab may deliberately fail to compile (e.g.
+adding `override` to surface a typo). Leave an example **unglyphed** when all its tabs are
+legitimate variations with no wrong side (different types, sizes, ownership counts, or a
+pure mechanism contrast) — glyphing those is noise. The glyph goes in the dropdown
+`options:` entry *and* its matching `value_map:` key (and the `default:` if it names that
+option) — they must stay byte-identical. This is the manual convention that resolved the
+tab-compile-status request; the engine does not auto-render these glyphs.
+
 Confirm the list before generating any files.
 
 ### Step 3 — Diagram triage
@@ -128,7 +156,8 @@ cpp_labs/<subject>/tests/test_<subject>.py        # exact-baked-stdout assertion
 ```
 
 Then grow it: duplicate the example topic/demo per example, add at least one gotcha,
-and list every demo in the layout. Apply the C++ style guardrails (see **Guardrails**
+and list every demo in the layout — **standalone gotcha examples go last** in the
+`demos:` list (see Guardrails). Apply the C++ style guardrails (see **Guardrails**
 below) while filling placeholders. The worked exemplar at `cpp_labs/template_subject/`
 shows a complete 2-example + 1-gotcha set with `diagram: false` — copy its shape.
 
@@ -171,6 +200,7 @@ These rules exist for good reasons — don't skip them.
 | Break long `<<` chains at `<<` boundaries, aligned | Long stream statements on one line are unreadable at course font sizes. Rule: break when 3+ `<<` or >~55 chars; align continuation lines under the first `<<`. |
 | Never commit `dist_labs/` | It is gitignored — the baked HTML is always regenerated from YAML. Committing it creates merge conflicts and bloats the repo. |
 | Do NOT modify engine code | Authoring is purely YAML content. The bundled `engine/cpp_labs/` Python is a vendored copy — editing it here diverges from upstream. Engine changes belong in the source repo with their own TDD cycle. |
+| Order standalone gotcha examples **last** in the rail | A gotcha is a deliberate failure that only makes sense after the correct behavior it violates — end on it as the cautionary capstone (`op_overload` groups its gotchas last). In `layouts/<subject>.rail.yaml`, list every example whose `group:` is `Gotchas` (titled `Gotcha — …`) at the end of `demos:`, after all correct examples; multiple gotchas trail as a group. Does **not** force reordering of a normal teaching example that merely carries a correct\|mistake `cases:` pair (e.g. `class_structure`'s `cls_copy_ctor`). |
 
 ---
 
