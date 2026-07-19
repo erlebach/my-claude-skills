@@ -315,6 +315,7 @@ follows from the `diagram:` decision:
 |---|---|---|
 | **Yes** (`diagram: true`) | Fold-out **button** (top-left); the diagram owns the right column | `- concept: {id, text}` block **plus** `- topic: {…, diagram: true}` (no `concept:` on the topic) |
 | **No** (`diagram: false`) | Right-panel **aside** | `- topic: {…, diagram: false, concept: "${x.explanation}"}` (no separate `concept:` block) |
+| **No, with a per-tab prompt slot** (`diagram: false` + `aside_html:`) | Aside moves **inside each tab**, below that tab's slot | `- topic: {…, diagram: false, concept: "${x.explanation}", aside_html: {…}}` (see §7a) |
 
 A "diagram" is defined by the **slot it occupies** (the right column), not how it is built
 (memory-model SVG, a text/HTML stepper, a figure). The **Key Idea** is the point of the
@@ -330,6 +331,49 @@ or one part of it.
 
 **Enforcement:** `test_keyidea_placement.py` scans every `demos/*.demo.yaml` and fails the
 build if either anti-pattern ships. Copy it into a new project's test set.
+
+### 7a. `aside_html:` — a per-variant right-column HTML slot (built 2026-07-18)
+
+For `diagram: false` topics, the topic block may carry an `aside_html:` map — raw
+(unescaped) author HTML rendered in the right column of each tab, **switching with
+the tab**, stacked above the Key Idea aside (which then moves inside the tabs; the
+outer wrap disappears). Built for prompt disclosure on agentic pages (the prompt
+belongs beside the code it produced — see AGENTIC.md §5), but generic: any per-tab
+aside content qualifies.
+
+```yaml
+- topic:
+    id: ags
+    source: ags
+    diagram: false
+    concept: "${ags.explanation}"
+    aside_html:
+      "❌ vague prompt (model picks the conventions)": |
+        <details class="prompt-panel" style="border:1px solid var(--accent);border-radius:6px;padding:.3em .7em;margin-bottom:.6rem">
+          <summary style="cursor:pointer;min-height:44px">❌ <strong>Prompt A, verbatim</strong> (click to read)</summary>
+          <pre style="white-space:pre-wrap">…the prompt, byte-for-byte…</pre>
+        </details>
+```
+
+Semantics (engine-tested in `cpp_labs/tests/test_aside_html.py`):
+
+- **Keys are the EXACT variant/tab labels** (same convention as `diagram_spec:`).
+  A mismatched key silently drops that entry — copy labels from the topic's
+  `options:` anchors.
+- **Values are raw HTML, not escaped** — that is the point; `concept:` text stays
+  escaped as always. The trust model is unchanged (author markup on a
+  self-contained page, same category as `html:` blocks).
+- **Every tab renders the two-column grid** (`.cdp-code` left, aside stack right),
+  even a tab absent from the map or with no `concept:` — the code-column width is
+  constant across tabs by construction.
+- **`diagram: false` only.** With `diagram: true` (and on output-tabs and `cases:`
+  topics) the map is ignored.
+- **Page-local CSS caveat:** the code `<pre>` is now nested in the grid cell — a
+  height selector must follow it (`#id .vt-panel-id .cdp-code > pre`, not
+  `.vt-panel-id > pre`). This broke once; don't repeat it.
+
+Worked exemplar: `cpp_labs/agentic_spec/demos/ags_contrast.demo.yaml` (the retrofit
+that shipped the feature).
 
 ### The `steps:` diagram — a paced text trace in the right column
 
@@ -445,6 +489,12 @@ Smart builders: `heading`, `html`, `topic`, `concept`. Component blocks:
 `byte_grid`, `code_line_link`, `variant_tabs`, `code_diagram_panel`, `stacked_subcases`,
 `progressive_steps`, `glossary`. Each block is a one-key mapping `{blockname: {args}}`;
 component blocks require `id`. Full catalog: `usage/INTERFACE_ELEMENTS.md`.
+
+`topic` block args beyond `id`/`source`: `diagram`, `concept`, `concept_title`,
+`steps` (§7), `diagram_spec` (DIAGRAMS.md §5a), `aside_html` (§7a), `gauge`
+(build-derived step-gauge from `GAUGE:` markers), `console_link` (console↔source
+hover link from `/*[hl]*/`-marked cout lines), `link_diagram`. Authoritative list:
+`cpp_labs/yaml_engine/interface_catalog.py` (`_BUILDER_INFO`).
 
 ---
 

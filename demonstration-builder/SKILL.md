@@ -7,7 +7,9 @@ description: >-
   wants to create, draft, scaffold, or add a new cpp_labs subject / demonstration /
   topic / example / gotcha, or asks to turn a C++ concept into an interactive lab
   page, even if they don't name this skill. Also use it to polish an author's draft
-  topic/demo/layout YAML.
+  topic/demo/layout YAML, and when building an AGENTIC demonstration — a page teaching
+  students to work with AI-generated code via recorded model transcripts (prompt
+  contrasts, test batteries over model replies, harvest tallies).
 ---
 
 # demonstration-builder
@@ -130,6 +132,7 @@ all variant tabs — it follows directly from the diagram decision above:
 |---|---|---|
 | **Yes** (`diagram: true`) | Fold-out **button** (top-left); the diagram owns the right column | `- concept: {id, text}` block **plus** `- topic: {…, diagram: true}` (no `concept:` on the topic) |
 | **No** (`diagram: false`) | Right-panel **aside** | `- topic: {…, diagram: false, concept: "${x.explanation}"}` (no separate `concept:` block) |
+| **No, with per-tab aside content** (`diagram: false` + `aside_html:`) | Aside moves **inside each tab**, below that tab's slot HTML (e.g. its verbatim prompt) | Same as above **plus** `aside_html: {…}` keyed by exact tab labels — `reference/PATTERN.md` §7a |
 
 A "diagram" is defined by the **slot it occupies** (the right column), not how it is built
 (a memory-model SVG, a text/HTML stepper, or a figure). The Key Idea is the point of the
@@ -180,6 +183,23 @@ the author for a content review.
 
 ---
 
+## Agentic demonstrations
+
+A second genre: pages that teach students to **work with AI-generated code**, where
+the C++ comes from a **real recorded model transcript** (prompt → reply, verbatim)
+embedded in an author-written test harness, and every claim on the page is
+build-derived or traced to a harvest file. Same engine, same YAML, extra discipline.
+
+If the author asks for a demo about prompts, model comparisons, hallucination,
+grounding, test gates over AI code, or anything embedding model output: **read
+`reference/AGENTIC.md` before shaping examples.** It carries the locked honesty
+invariants (verbatim code + byte-sync tests, disclosed re-roll selection, on-page
+provenance), the folder shape (`transcripts/`, `harvest/`), the design levers for
+when capable models refuse to produce the failure your lesson needs, and the page
+grammar (prompts beside code via `aside_html`, complete-reply blocks, per-arm tabs).
+
+---
+
 ## The worked exemplar
 
 `cpp_labs/template_subject/` is a complete worked example (2 examples + 1 gotcha,
@@ -211,6 +231,7 @@ These rules exist for good reasons — don't skip them.
 | `INSTALL.md` | Plain-language setup guide (prerequisites, install, first build) |
 | `reference/PATTERN.md` | Full YAML anatomy of topic/demo/layout files + test families |
 | `reference/DIAGRAMS.md` | Diagram triage guide + zero-JS interaction layer options |
+| `reference/AGENTIC.md` | Agentic demonstrations: transcripts, honesty invariants, harvests, page grammar |
 | `reference/CHECKLIST.md` | Build/verify commands + ordered pre-commit checklist |
 | `engine/` | Vendored baking engine: `cpp_labs/` package + `build_labs.sh` + `requirements.txt` |
 | `scripts/install_engine.sh` | Install the bundled engine into a target project (Step 0) |
