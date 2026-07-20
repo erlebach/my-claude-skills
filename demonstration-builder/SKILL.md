@@ -196,7 +196,8 @@ grounding, test gates over AI code, or anything embedding model output: **read
 invariants (verbatim code + byte-sync tests, disclosed re-roll selection, on-page
 provenance), the folder shape (`transcripts/`, `harvest/`), the design levers for
 when capable models refuse to produce the failure your lesson needs, and the page
-grammar (prompts beside code via `aside_html`, complete-reply blocks, per-arm tabs).
+grammar (the uniform example skeleton, real tab strips with toggle-to-close,
+prompts beside code via `aside_html`, per-arm diff/reply tabs, page density).
 
 ---
 
@@ -221,6 +222,30 @@ These rules exist for good reasons — don't skip them.
 | Never commit `dist_labs/` | It is gitignored — the baked HTML is always regenerated from YAML. Committing it creates merge conflicts and bloats the repo. |
 | Do NOT modify engine code | Authoring is purely YAML content. The bundled `engine/cpp_labs/` Python is a vendored copy — editing it here diverges from upstream. Engine changes belong in the source repo with their own TDD cycle. |
 | Order standalone gotcha examples **last** in the rail | A gotcha is a deliberate failure that only makes sense after the correct behavior it violates — end on it as the cautionary capstone (`op_overload` groups its gotchas last). In `layouts/<subject>.rail.yaml`, list every example whose `group:` is `Gotchas` (titled `Gotcha — …`) at the end of `demos:`, after all correct examples; multiple gotchas trail as a group. Does **not** force reordering of a normal teaching example that merely carries a correct\|mistake `cases:` pair (e.g. `class_structure`'s `cls_copy_ctor`). |
+
+---
+
+## Accessibility (ADA — WCAG 2.1 Level A/AA)
+
+Pages are held to WCAG 2.1 **Level A/AA**; AAA findings are explicitly out of
+scope. The engine covers the structural items — authored content must not undo
+them:
+
+- **Heading ladder — no level skips.** Hand-authored HTML inside an example must
+  not jump heading levels. For section headings within an example, use a
+  **bold-lead paragraph** (`<p><strong>Section name.</strong> …</p>`), not an
+  `<h4>`/`<h5>`.
+- **Engine code windows are keyboard-accessible** — every rendered code `<pre>`
+  carries `tabindex="0" role="region" aria-label="Code listing"`. Tests must not
+  pin a bare `<pre>`; write attribute-tolerant matches.
+- **Hand-authored `<pre>` blocks wrap their content in `<samp>`** (program output)
+  **or `<code>`** (source) so assistive tech announces them correctly.
+- **Interactive widgets built content-locally** (tab strips, toggles) need real
+  labels and keyboard reachability — verify by measurement, not by eye
+  (`reference/CHECKLIST.md`).
+- An a11y gap in engine-rendered markup is an **engine issue**: surface it as an
+  ENGINE_REQUEST for the source repo rather than patching per-page (see the
+  engine guardrail above).
 
 ---
 

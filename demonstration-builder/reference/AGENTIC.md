@@ -115,15 +115,50 @@ which axis varied and hold the other fixed — or **disclose on the page** when 
 can't (e.g. packaged local models baking in their own prompts). When harvesting
 local models, always capture `ollama show <model> --system` alongside the rolls.
 
+**Context is layered, and prior turns are a variable of the same rank.** The model
+answers the FULL context plus the last prompt — vendor system message, harness
+instructions, installed skills/config files, prior conversation turns, then the
+final prompt — with a **different entity responsible for each layer**. The series'
+fresh-session protocol deliberately zeroes the history layer (that is what makes
+tallies iid) and so diverges from real multi-turn usage; disclose that when it
+matters. A comparison that varies history must hold the other layers fixed, like
+any other axis.
+
 ## 5. Page grammar
 
 Conventions students see, proven across the series:
 
+- **Uniform example skeleton (locked, author-approved at A6).** Every example
+  follows ONE recognizable top-to-bottom form, so the whole structure is visible
+  without scrolling:
+  1. Orientation intro ("Example N — label", ~45 words).
+  2. Code tabs + consoles (engine variant topic; Key Idea box beside).
+  3. Changes section — bold-lead heading ("The change" / "Both changes"), per-arm
+     scope lines, then a **real tab strip** of per-arm diffs.
+  4. Tally section ("&lt;model&gt; tally, both arms" — numerals from
+     `tally_summary.md`).
+  5. Complete-replies **tab strip** ("❌ … — complete reply" / "✅ … — complete
+     reply", prose + code verbatim — the code panels embed only each reply's code).
+  6. Final example only: a closing questions frame.
+  Everything below the code tabs starts **unexpanded** (no tab preselected).
+- **"Tabs" from the author means REAL tab strips — never collapsed `<details>`.**
+  "Unexpanded by default" means a radio+label strip with NO radio checked (nothing
+  shows until a click), not a details block. Strips must **toggle-to-close**
+  (clicking the open tab closes it) — radios alone can't; use the pure-CSS
+  twin-label none-radio trick or a minimal content-local script. Single-exhibit
+  examples merge their diff + reply buttons SIDE BY SIDE into one strip, not two
+  stacked one-button strips. The ONE `<details>` exception: prompt panels.
 - **Prompts are disclosed verbatim, beside the code.** Use the topic block's
-  `aside_html:` map (see PATTERN.md §7a): one `<details class="prompt-panel">` per
-  variant, keyed by the exact tab label. The prompt switches with the tab.
-- **Complete replies** (prose + code, verbatim) live in a `<details>` block at the
-  bottom of the example — the code panels embed only each reply's code block.
+  `aside_html:` map (see PATTERN.md §7a): one collapsed, labeled
+  `<details class="prompt-panel">` per variant, keyed by the exact tab label. The
+  prompt switches with the tab.
+- **Page density: more, smaller examples.** Too much information per example turns
+  students off. Each example gets 1–2 tabs and one job; split a 3-tab mega-example.
+  Label every example visibly ("Example 1 — …") — never let an "Example 2"
+  reference appear without a visible "Example 1". Sidebar: **ONE** Main Takeaway
+  concept per page (the engine renders each sidebar concept as its own panel, so
+  multiple concepts = a wall of takeaway boxes); separate its paragraphs with
+  blank lines inside the single concept.
 - **Per-arm content stays inside its tab.** Anything below a reply (its tally half,
   its interpretation) must match the tab the reader is on; only content that
   explicitly **compares** the arms stays shared below the tabs.
@@ -174,3 +209,6 @@ Hard-won; check before writing assertions or page wording.
 | The engine has no stdin plumbing and inherits a TTY | For cin-reading model code, use the disclosed author frame: `#define main model_main` + `cin.rdbuf` on a fixed dataset |
 | `left_rail` renders **one panel per sidebar concept** | Locate a demo's panel by a distinctive block id, never by positional index |
 | Box-chain diagrams render at a fixed node width | Do not reintroduce content-driven sizing; notes are HTML captions, not SVG text (DIAGRAMS.md §5a) |
+| Engine code windows carry `tabindex="0" role="region" aria-label="Code listing"` (keyboard a11y, 2026-07-20) | Never pin a bare `<pre>` in test regexes — write attribute-tolerant matches |
+| In a `left_rail` layout, panels inside **inactive** rail entries have zero client rects | Playwright measurements (tab switch, toggle-to-close, visibility) must first activate the example's rail entry; serve over localhost — `file://` is blocked |
+| The engine emits ids only for `callout_note` / `variant_tabs` blocks | Locate hand-authored `html` blocks by distinctive text, not by id or position |

@@ -44,6 +44,13 @@ python -m cpp_labs.yaml_engine.interface_catalog
 python3 -m http.server -d dist_labs 8000
 ```
 
+**Interactive behavior is verified by MEASUREMENT, not by eye.** Drive the served
+page with Playwright over `http://localhost:8000` (`file://` is blocked). Caveat
+for `left_rail` layouts: panels inside inactive rail entries have **zero client
+rects** — select the example's rail entry first, then measure tab switching,
+toggle-to-close, and visibility. Fonts and geometry that "look consistent" can be
+40% off — measure computed styles, don't eyeball.
+
 **`dist_labs/` is gitignored.** HTML output is a build artifact. Regenerate from YAML;
 never commit built HTML.
 
