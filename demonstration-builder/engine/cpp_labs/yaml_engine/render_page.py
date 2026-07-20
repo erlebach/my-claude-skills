@@ -70,7 +70,17 @@ def _topic_registry() -> dict[str, Any]:
 
 def _pre(text: str, language: str | None = None) -> str:
     cls = f' class="language-{language}"' if language else ""
-    return f"<pre><code{cls}>{_html.escape(text)}</code></pre>"
+    # Keyboard accessibility (WCAG 2.1.1). Page CSS may cap this code window's
+    # height and make the <pre> scroll (the .cdp-code > pre height-cap pattern
+    # used by ag_diff/ag_repair/agentic_spec); a scroll container that no
+    # keyboard can reach is a Level A violation. tabindex="0" makes every code
+    # window focusable (so it can be scrolled by keyboard), and role/aria-label
+    # give the focusable region an accessible name.  See
+    # ENGINE_REQUEST_code-window-keyboard-a11y_2026-07-20.
+    return (
+        f'<pre tabindex="0" role="region" aria-label="Code listing">'
+        f'<code{cls}>{_html.escape(text)}</code></pre>'
+    )
 
 
 def _bake_program(v: dict[str, Any], language: str | None = None) -> dict[str, Any]:
