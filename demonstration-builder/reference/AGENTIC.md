@@ -18,6 +18,7 @@ honesty discipline that protects the page's credibility.
 4. [Two-axis principle: model AND system message](#4-two-axis-principle)
 5. [Page grammar](#5-page-grammar)
 6. [Harvest discipline](#6-harvest-discipline)
+6a. [Two-turn transcripts & system-append disclosure](#6a-two-turn-transcripts--system-append-disclosure)
 7. [Recorded platform gotchas](#7-recorded-platform-gotchas)
 
 ---
@@ -31,8 +32,9 @@ cpp_labs/<subject>/topics/        # model code embedded in author harnesses
 cpp_labs/<subject>/demos/          # page wiring incl. prompt disclosure
 cpp_labs/<subject>/layouts/
 cpp_labs/<subject>/tests/          # + byte-sync + invariant tests (see §2)
-cpp_labs/<subject>/transcripts/    # one file per roll: prompt + reply, verbatim,
-                                   #   with capture-metadata frontmatter
+cpp_labs/<subject>/transcripts/    # one file per roll, one- or two-turn (§6a):
+                                   #   prompts + replies verbatim, with
+                                   #   capture-metadata frontmatter
 cpp_labs/<subject>/harvest/        # README + protocol, tally.md → tally_summary.md,
                                    #   scripts/ (roll + classify tooling)
 ```
@@ -195,6 +197,50 @@ Conventions students see, proven across the series:
 - **Classify with a script, not by eye** — a `classify.py` applying explicit gates
   (compiled? called the real API? passed the battery?) writes the tally; the page
   quotes the tally.
+
+## 6a. Two-turn transcripts & system-append disclosure
+
+Proven at A12 (`ag_context`); use when a lesson **measures the history layer** —
+prior conversation turns as the experimental variable (§4). This is the narrow
+two-turn subset, not a general multi-turn format; adopting it decides nothing
+about longer sessions.
+
+**Body layout** — four sections, in this order, all present, all verbatim:
+
+```
+## Turn 1 — Prompt (verbatim)
+## Turn 1 — Reply (verbatim)
+## Turn 2 — Prompt (verbatim)
+## Turn 2 — Reply (verbatim)
+```
+
+**Frontmatter:** `turns: 2` (absent means 1), plus `session:` — the linkage proof
+that both turns ran in ONE real session: the Claude Code session id, the resume
+mechanism (`claude -p --resume <session-id>` in the same cwd), and the raw log
+paths for both turns.
+
+**Honesty extensions (binding):**
+
+- **No fabricated assistant turns, ever.** Turn-1 replies are model-generated,
+  verbatim, immutable. If turn 1 fails or is interrupted, discard the whole
+  session — a discarded generation, not a sample.
+- **The sample unit is the session.** A re-roll redoes both turns; selection
+  tallies count sessions.
+- **Byte-sync binds the embedded code to the turn-2 reply's code block.** The
+  turn-1 reply is archived in full and shown in the replies tab strip.
+- Turn-1 replies vary across rolls (they are generations too); any page claim
+  about turn-1 content must be checked against ALL rolls, not the exhibit roll
+  alone. The tally records turn-2 outcomes.
+
+**Mechanics:** capture the session id from the turn-1 stream-json log; send
+turn 2 with `--resume <session-id>` in the **same cwd**; keep both raw logs
+(`harvest/rolls/<arm>/rN_t1.log` / `rN_t2.log`). Parallel rolls via `xargs -P4`
+are safe when per-roll paths are disambiguated.
+
+**Single-turn `system_append:` extension:** when an arm passes text via
+`--append-system-prompt`, a `system_append:` frontmatter field records that text
+**verbatim**, and the page discloses it. The rest of the single-turn contract is
+unchanged.
 
 ## 7. Recorded platform gotchas
 
