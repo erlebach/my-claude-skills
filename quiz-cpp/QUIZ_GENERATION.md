@@ -22,12 +22,12 @@ quizzes/quiz-1/
         source_check.md  whether each question came from something you assigned
         analysis.md      what the cold reviewer thought
     quiz_1_2026-07-26_17h21mEST/    another run
-    final_analysis_.../             the paper you actually give out
+    final_analysis_.../             the quiz you actually give out
 ```
 
 A run is a batch of candidate questions, not the quiz. The quiz gets assembled from the runs in `final_analysis_`, which is where you come in — see below.
 
-**`quiz.md`** is the student paper. Questions numbered, options lettered, point value printed on each question, no answers anywhere in the file. This is what goes to LaTeX and onto paper.
+**`quiz.md`** is the student version. Questions numbered, options lettered, point value printed on each question, no answers anywhere in the file. This is what goes to LaTeX and onto paper.
 
 **`key.md`** is yours. It opens with a table — one row per question giving its difficulty tier, its point value, which module it belongs to, **where the material came from**, whether it is an agentic item, and the correct answer. Below the table is a paragraph per question explaining why the key is the key and what misconception each wrong option is meant to catch.
 
@@ -51,7 +51,7 @@ Neither reviewing agent can write files — a platform rule requires them to han
 
 ## Why a quiz takes several runs, and where you choose
 
-One writer asked for twenty-two questions drifts. It repeats itself, it leans on whichever demo it warmed up on, and the last questions get less care than the first. So a full quiz is written in batches of about ten, each a complete run — written, source-checked, cold-reviewed — and each blind to the others. Questions are numbered straight through, so question 23 is question 23 from the moment it is written until it reaches the paper.
+One writer asked for twenty-two questions drifts. It repeats itself, it leans on whichever demo it warmed up on, and the last questions get less care than the first. So a full quiz is written in batches of about ten, each a complete run — written, source-checked, cold-reviewed — and each blind to the others. Questions are numbered straight through, so question 23 is question 23 from the moment it is written until it reaches the quiz.
 
 That deliberately produces **more questions than the quiz needs**, about half again as many. The surplus is the point: a question with a defect gets dropped rather than patched, and you get a real choice rather than a fait accompli.
 
@@ -61,7 +61,7 @@ The comparisons on that sheet are ones **no reviewer in any run could have made*
 
 **You make the cuts.** Not the writer, not a reviewer, not the agent you are talking to. If a tier ends up short — you reject four of the six hardest questions and only two survive — you say so, and another batch of that tier alone gets written and added to the sheet.
 
-Once you have your set, it is renumbered, the answer letters are rebalanced, and the whole assembled paper goes through **one more cold review** as a single quiz. That last pass matters for a specific reason: any question you or the agent edited after its original review is, strictly, unreviewed. The final pass is what clears it.
+Once you have your set, it is renumbered, the answer letters are rebalanced, and the whole assembled quiz goes through **one more cold review** as a single quiz. That last pass matters for a specific reason: any question you or the agent edited after its original review is, strictly, unreviewed. The final pass is what clears it.
 
 ## What comes back to you
 

@@ -22,7 +22,7 @@ Modern C++: classes, functions, pointers and memory, concurrency, data structure
 
 Generate the tiers in the stated proportion and **label each item's tier** in the instructor key, since the weights depend on it.
 
-**Print the point value on the student paper** — `1. (3 points) …` — and state the total and the full-credit threshold in the header. Students need the weights to budget 15 minutes rationally, and printing them is safe *because* the allowance is point-based: skipping an L3 item consumes the entire grace, so the weights create no skip-the-hard-ones strategy. **Never print the tier label** (`L1`/`L2`/`L3`) on the student version — it adds nothing the point value doesn't and invites "L3 = skip it". Tier labels stay in `key.md`.
+**Print the point value on the student version** — `1. (3 points) …` — and state the total and the full-credit threshold in the header. Students need the weights to budget 15 minutes rationally, and printing them is safe *because* the allowance is point-based: skipping an L3 item consumes the entire grace, so the weights create no skip-the-hard-ones strategy. **Never print the tier label** (`L1`/`L2`/`L3`) on the student version — it adds nothing the point value doesn't and invites "L3 = skip it". Tier labels stay in `key.md`.
 
 ## Difficulty: err hard
 
