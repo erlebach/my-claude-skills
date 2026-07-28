@@ -1,0 +1,32 @@
+# macOS
+.DS_Store
+._*
+
+# Editor / swap
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Scratch / generated output
+graphify-out/
+file_tree*.txt
+*.tmp
+*.log
+
+# Secrets
+.env
+.env.*
+*.pem
+*.key
