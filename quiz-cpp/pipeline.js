@@ -96,6 +96,46 @@ const unescape = s => String(s || '')
 authored.quiz = unescape(authored.quiz)
 authored.key = unescape(authored.key)
 
+// A generation agent once read the pack, authored ten items, compiled every stem —
+// and then emitted the literal string "placeholder" into both fields. The schema was
+// satisfied (a string is a string), so the run continued: the reviewer refused to
+// review a placeholder, and the source-checker went off and verified an OLDER run's
+// key.md that it found on disk, returning a confident report about the wrong items.
+// Two agents and ~220k tokens spent on nothing. Fail here instead, in one second.
+const DEGENERATE = /^(placeholder|todo|tbd|n\/a|none|\.\.\.)\.?$/i
+const assertUsable = (name, text, minLen) => {
+  const t = String(text || '').trim()
+  if (!t) return `${name} came back empty`
+  if (DEGENERATE.test(t)) return `${name} came back as the placeholder "${t}"`
+  if (t.length < minLen) return `${name} is ${t.length} chars, below the ${minLen} floor — almost certainly a stub or a path rather than the document`
+  return null
+}
+
+// ~600 chars per item is conservative: a real five-option L3 stem runs well past 1200.
+const floor = Math.max(1000, 600 * Number(a.itemCount || 1))
+const emitFault = assertUsable('quiz', authored.quiz, floor)
+  || assertUsable('key', authored.key, Math.round(floor * 0.6))
+if (emitFault) {
+  log(`ABORT before the checking stages: ${emitFault}`)
+  return {
+    error: `generation emitted an unusable document — ${emitFault}. No files were written. Re-run with an edited prompt (an unchanged prompt replays this result from cache).`,
+    quizLength: String(authored.quiz || '').length,
+    keyLength: String(authored.key || '').length,
+  }
+}
+
+// Cheap sanity check on coverage: the caller usually asks for a specific numbered
+// range, so a document missing most of those numbers is worth flagging even if long.
+const wanted = String(a.composition || '').match(/\b(\d+)\s+through\s+(\d+)\b/i)
+if (wanted) {
+  const [lo, hi] = [Number(wanted[1]), Number(wanted[2])]
+  const missing = []
+  for (let n = lo; n <= hi; n++) {
+    if (!new RegExp(`(^|\\n)\\s*${n}\\.`, 'm').test(authored.quiz)) missing.push(n)
+  }
+  if (missing.length) log(`WARNING: quiz.md has no stem numbered ${missing.join(', ')}`)
+}
+
 phase('Check')
 
 // Both checks depend only on the finished quiz, so they run concurrently.
@@ -107,6 +147,8 @@ const [sourceCheck, review] = await parallel([
 ---
 ${authored.key}
 ---
+
+If the text between those delimiters is not an answer key — it is empty, a placeholder, a file path, or a summary — STOP and report exactly that. Do NOT search the repository for another key.md to verify instead. An earlier run of this pipeline was handed a placeholder, went looking, found a previous run's key on disk, and returned a detailed and entirely confident report about items nobody had asked about. A one-line "no key was supplied" is far more useful than a thorough answer to the wrong question.
 
 For every item, open the source it cites and report:
 
@@ -127,6 +169,8 @@ Return a markdown report, one section per item, ending with a summary table.`,
 ---
 ${authored.quiz}
 ---
+
+If the text between those delimiters is not a quiz — it is empty, a placeholder, a file path, or a summary — STOP and report exactly that. Do not invent quiz items and then review your own inventions, and do not go looking for a quiz elsewhere.
 
 Write a review. For EVERY question:
 
