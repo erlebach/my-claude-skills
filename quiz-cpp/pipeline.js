@@ -58,30 +58,154 @@ const TEXT_SCHEMA = {
   properties: { report: { type: 'string', description: 'Full markdown report.' } },
 }
 
+const DUP_SCHEMA = {
+  type: 'object',
+  required: ['pairs'],
+  properties: {
+    pairs: {
+      type: 'array',
+      description: 'Pairs of items testing the same underlying fact. Empty if none.',
+      items: {
+        type: 'object',
+        required: ['a', 'b', 'same_fact', 'confidence', 'why'],
+        properties: {
+          a: { type: 'integer' },
+          b: { type: 'integer' },
+          same_fact: { type: 'boolean' },
+          confidence: { type: 'number', description: '0.0-1.0' },
+          why: { type: 'string', description: 'What a student answering one already knows about the other, and which item contains which.' },
+        },
+      },
+    },
+  },
+}
+
+// The source check used to return prose only, which meant the set of flagged
+// items had to be READ out of a 22-row table plus a totals line further down.
+// That is a human-eye step in the middle of an automated loop, and it failed:
+// four flagged items were reported as two. Verdicts are data now; the flagged
+// set is a filter, not a judgement.
+const SOURCE_SCHEMA = {
+  type: 'object',
+  required: ['report', 'verdicts'],
+  properties: {
+    report: { type: 'string', description: 'Full markdown report, one section per item.' },
+    verdicts: {
+      type: 'array',
+      description: 'One entry per item. Every item must appear exactly once.',
+      items: {
+        type: 'object',
+        required: ['item', 'verdict', 'platform_dependent', 'untaught_terms', 'note'],
+        properties: {
+          item: { type: 'integer' },
+          verdict: { type: 'string', enum: ['SUPPORTED', 'PARTIAL', 'UNSUPPORTED', 'NO SOURCE'] },
+          platform_dependent: { type: 'boolean', description: 'True if the key rests on a recorded observation rather than a rule.' },
+          untaught_terms: { type: 'array', items: { type: 'string' }, description: 'Terms the item depends on that no cited source introduces. Empty if none.' },
+          note: { type: 'string' },
+        },
+      },
+    },
+  },
+}
+
+const TIER_SCHEMA = {
+  type: 'object',
+  required: ['quiz', 'key', 'facts', 'unsourced'],
+  properties: {
+    quiz: { type: 'string', description: 'Numbered items for THIS TIER ONLY. No keys, no tier labels, no header.' },
+    key: { type: 'string', description: 'Composition table rows and rationales for THIS TIER ONLY. No table header row.' },
+    facts: { type: 'string', description: 'One line per item: "N: the single fact this item tests".' },
+    unsourced: { type: 'array', items: { type: 'integer' } },
+  },
+}
+
+// Round 2 and later: the caller splices regenerated items into a full quiz and
+// wants only the checks re-run. Without this the loop is not a loop - each round
+// would rewrite all 22 items and throw away the ones that already passed.
+let authored
+// Passing the documents by PATH rather than by value. On round 2+ the files
+// already exist on disk, so structural key-blindness is gone either way: the
+// reviewer could find key.md whether or not we hand it a path. What replaces it
+// is an explicit instruction not to look, plus the fact that the reviewer is
+// only ever given the quiz path. Copying 40k characters through the args by
+// hand would add a transcription risk for a guarantee already spent.
+if (a.preAuthoredPaths && a.preAuthoredPaths.quiz && a.preAuthoredPaths.key) {
+  log(`checking quizzes on disk; generation skipped`)
+  authored = {
+    quiz: `(READ THE QUIZ FROM THIS FILE, and read nothing else: ${a.preAuthoredPaths.quiz})`,
+    key: `(READ THE KEY FROM THIS FILE: ${a.preAuthoredPaths.key})`,
+    facts: a.preAuthoredPaths.facts ? `(facts ledger: ${a.preAuthoredPaths.facts})` : '',
+    unsourced: [],
+  }
+} else if (a.preAuthored && a.preAuthored.quiz && a.preAuthored.key) {
+  log('checking a supplied quiz; generation skipped')
+  authored = {
+    quiz: a.preAuthored.quiz,
+    key: a.preAuthored.key,
+    facts: a.preAuthored.facts || '',
+    unsourced: a.preAuthored.unsourced || [],
+  }
+} else {
+
 phase('Generate')
 
-const authored = await agent(
-  `You are authoring a quiz for ${a.course || 'a C++ course'}, covering: ${a.coverage}.
+// Tier-descending: L3 first, then L2, then L1. An L3 item is a multi-step trace
+// whose fact-set is a superset of several L1 facts, so writing the small items
+// first leaves the big ones nothing to build from - which is exactly how every
+// cross-tier collision in Quiz 1's 40-item pool was produced. Each tier is told
+// the facts the tiers above it already spent.
+const TIERS = a.tiers || [
+  { tier: 'L3', count: 3, points: 3 },
+  { tier: 'L2', count: 5, points: 2 },
+  { tier: 'L1', count: 14, points: 1 },
+]
 
-Read the course profile at ${a.profilePath} for the required composition, scope rule, and item conventions. Read these assigned sources in full before writing anything — not their index pages, not summaries:
+let ledger = ''
+let nextNumber = 1
+const parts = []
+
+for (const t of TIERS) {
+  const spent = ledger
+    ? `\n=== FACTS ALREADY SPENT by higher-tier items ===\nDo NOT test any of these, and do not test a narrower or partial version of one. If the obvious item for a topic is already spent, find a different angle on that topic or use a different topic.\n\n${ledger}\n`
+    : ''
+
+  const out = await agent(
+    `You are authoring the ${t.tier} items of a quiz for ${a.course || 'a C++ course'}, covering: ${a.coverage}.
+
+Read the course profile at ${a.profilePath} for the tier definitions, the scope rule, and the item conventions. Read these assigned sources in full before writing anything — not their index pages, not summaries:
 
 ${sources || '(none supplied — report every item as unsourced)'}
 
-Generate roughly twice the target item count as candidates, then cut to ${a.itemCount}. ${a.composition || ''}
-
+Write exactly ${t.count} ${t.tier} items, worth ${t.points} points each, numbered ${nextNumber} through ${nextNumber + t.count - 1}.
+${spent}
 ${a.formatRules || ''}
 
-Return two complete documents.
+Return THREE things.
 
-quiz.md — the student paper. Numbered stems, lettered options, the point value printed on every stem, and NOTHING that reveals an answer: no asterisks, no tier labels, no answer list.
+quiz — the student version of these items only. Numbered stems, lettered options, the point value printed on every stem, and NOTHING that reveals an answer: no asterisks, no tier labels, no answer list. No document header; these items are concatenated with the other tiers'.
 
-key.md — the instructor version. Open with a composition table: item number, tier, points, module, Source, agentic yes/no, key. The Source cell must be specific enough to reopen — a page plus its section, a slide number, a named example. Write 'none' where an item was invented rather than drawn from the material, and list those numbers in the unsourced field. Below the table, one paragraph per item: why the key is the key, and what misconception each wrong option catches.
+key — the instructor version of these items only: one composition-table ROW per item (no header row) with item number, tier, points, module, Source, agentic yes/no, key letter; then one rationale paragraph per item saying why the key is the key and what misconception each wrong option catches. The Source cell must be specific enough to reopen — a topic YAML path plus its section. Write 'none' where an item was invented rather than drawn from the material, and list those numbers in unsourced.
+
+facts — one line per item, formatted "N: the single fact this item tests". These lines become the ledger the LATER, EASIER tiers must avoid, so be specific and concrete. Write "shallow copy leaves two objects pointing at one block, and both destructors free it" — not "copy semantics". A vague line here causes a duplicate item two tiers later.
 
 ${a.extraInstructions || ''}`,
-  { label: 'author', phase: 'Generate', model: 'opus', effort: 'medium', schema: QUIZ_SCHEMA }
-)
+    { label: `author:${t.tier}`, phase: 'Generate', model: 'opus', effort: 'medium', schema: TIER_SCHEMA }
+  )
 
-if (!authored) return { error: 'generation failed' }
+  if (!out) return { error: `generation failed at tier ${t.tier}` }
+  parts.push(out)
+  ledger += (ledger ? '\n' : '') + String(out.facts || '')
+  nextNumber += t.count
+  log(`${t.tier}: ${t.count} items written; ledger now ${ledger.split('\n').length} facts`)
+}
+
+authored = {
+  quiz: parts.map(p => p.quiz).join('\n\n---\n\n'),
+  key: parts.map(p => p.key).join('\n\n'),
+  facts: parts.map(p => p.facts).join('\n'),
+  unsourced: parts.flatMap(p => p.unsourced || []),
+}
+}
 
 // Models reliably emit HTML entities in code-bearing stems despite being told not
 // to. These would go straight into LaTeX as literal &lt; text, so normalize here
@@ -112,9 +236,13 @@ const assertUsable = (name, text, minLen) => {
 }
 
 // ~600 chars per item is conservative: a real five-option L3 stem runs well past 1200.
+// The floor guards a GENERATION. When the caller supplied the documents - by
+// value or by path - there was no generation to go wrong, and a path directive
+// is legitimately ~170 chars. Applying the floor there rejects correct input.
+const supplied = Boolean(a.preAuthoredPaths || a.preAuthored)
 const floor = Math.max(1000, 600 * Number(a.itemCount || 1))
-const emitFault = assertUsable('quiz', authored.quiz, floor)
-  || assertUsable('key', authored.key, Math.round(floor * 0.6))
+const emitFault = supplied ? null : (assertUsable('quiz', authored.quiz, floor)
+  || assertUsable('key', authored.key, Math.round(floor * 0.6)))
 if (emitFault) {
   log(`ABORT before the checking stages: ${emitFault}`)
   return {
@@ -126,7 +254,7 @@ if (emitFault) {
 
 // Cheap sanity check on coverage: the caller usually asks for a specific numbered
 // range, so a document missing most of those numbers is worth flagging even if long.
-const wanted = String(a.composition || '').match(/\b(\d+)\s+through\s+(\d+)\b/i)
+const wanted = supplied ? null : String(a.composition || '').match(/\b(\d+)\s+through\s+(\d+)\b/i)
 if (wanted) {
   const [lo, hi] = [Number(wanted[1]), Number(wanted[2])]
   const missing = []
@@ -140,7 +268,7 @@ phase('Check')
 
 // Both checks depend only on the finished quiz, so they run concurrently.
 // The reviewer is never given the key — and at this point no key exists on disk.
-const [sourceCheck, review] = await parallel([
+const [sourceCheck, review, duplication] = await parallel([
   () => agent(
     `Verify the sources cited by a quiz answer key. Here is key.md:
 
@@ -160,11 +288,15 @@ For every item, open the source it cites and report:
 
 The vocabulary check is the one that matters most: an item testing a term the course has not taught will pass every other stage, because a reviewer who knows the subject will answer it without noticing anything is missing.
 
-Return a markdown report, one section per item, ending with a summary table.`,
-    { label: 'source-check', phase: 'Check', model: 'opus', effort: 'medium', schema: TEXT_SCHEMA }
+Return a markdown report, one section per item, ending with a summary table.
+
+ALSO fill the verdicts array: one entry per item, every item exactly once. The field platform_dependent is true whenever the key rests on a recorded observation - a printed value, a crash, an exit code, a diagnostic, an elision the standard permits but does not mandate - rather than on a rule that holds everywhere. Put terms the item depends on that no cited source introduces into untaught_terms. This array is read by a script and decides which items get regenerated, so an item you flag in the prose but NOT in the array will be silently kept.`,
+    { label: 'source-check', phase: 'Check', model: 'opus', effort: 'medium', schema: SOURCE_SCHEMA }
   ),
   () => agent(
-    `You are sitting this quiz cold, as a strong student would. No answer key exists — none has been written, and nothing you can reach contains one. Answer from the printed items and your own knowledge alone. Do not search for the source material or the course site.
+    `You are sitting this quiz cold, as a strong student would. Answer from the printed items and your own knowledge alone.
+
+An answer key for this quiz DOES exist on disk, and so does the source material. Do not go looking for either. Opening them invalidates this review completely, because the one question worth answering here is whether the key is findable from the item alone - and a reviewer who has seen the key cannot tell you that. Do not search the filesystem, the repository, or the web. If you find yourself wanting to check something, that wanting is the signal the item may be ambiguous: write that down instead.
 
 ---
 ${authored.quiz}
@@ -182,8 +314,42 @@ Write a review. For EVERY question:
 
 Also flag: anything factually wrong in a stem; code that would not compile where that is not the point of the item; any option whose wording gives the key away by being longer, more hedged, or more precise than its neighbours; and — mark these PLATFORM-DEPENDENT — any item whose key would change with a different compiler, operating system, architecture, or optimization level. Students sit this on their own machines; an answer that holds only on arm64 macOS with clang is not an answer.
 
-End with a summary table: question, your answer, confidence, AMBIGUOUS yes/no.`,
+End with a summary table having EXACTLY these seven columns, in this order:
+
+| Q | Answer | Confidence | AMBIGUOUS | weak_count | expected_pass | trap_quality |
+
+- Q — the question number, digits only
+- Answer — one letter, a-e
+- Confidence — exactly one of: high, medium, low
+- AMBIGUOUS — exactly "yes" or "no", nothing else; put your reasoning in the per-question section above, not in this cell
+- weak_count — an integer 0-4: how many of the four wrong options you judged WEAK
+- expected_pass — a decimal 0.00-1.00: the fraction of well-prepared students you expect to answer correctly
+- trap_quality — an integer 1-5: how hard you had to work to rule out the strongest wrong option. 5 means you had to build a real defence and then dismantle it; 1 means every wrong option fell away in a clause.
+
+This table is read by a script. A cell containing prose breaks it.`,
     { label: 'blind-review', phase: 'Check', model: 'opus', effort: 'high', schema: TEXT_SCHEMA }
+  ),
+  () => agent(
+    `Find duplicated facts across a quiz. You are given every question AND every answer key, together, because a collision is usually invisible from the stems alone: two items can cite different source files while one item's key rests on the other item's exact fact.
+
+QUESTIONS
+---
+${authored.quiz}
+---
+
+KEYS
+---
+${authored.key}
+---
+
+Report every PAIR of items that test the same underlying fact.
+
+Judge the FACT, not the topic file. Two items citing the same file may test genuinely different rules; two items citing different files may test one rule from both sides. The second case is the one that matters and the one nothing else in this pipeline can see.
+
+Where the two items are in different tiers, say which contains which. A three-point trace over several objects usually swallows a one-point recall item, and it matters which is which — the cheap one is the one to replace.
+
+Be strict about confidence. Use 0.9+ only when a student who answers one has plainly answered the other. Use 0.5-0.7 when they overlap but each still tests something the other does not. When in doubt report the pair with low confidence rather than omitting it.`,
+    { label: 'duplication', phase: 'Check', model: 'opus', effort: 'high', schema: DUP_SCHEMA }
   ),
 ])
 
@@ -193,6 +359,9 @@ return {
   quiz: authored.quiz,
   key: authored.key,
   source_check: sourceCheck ? sourceCheck.report : 'SOURCE CHECK FAILED — stage returned nothing.',
+  verdicts: sourceCheck ? (sourceCheck.verdicts || []) : [],
   analysis: review ? review.report : 'BLIND REVIEW FAILED — stage returned nothing.',
   unsourced: authored.unsourced,
+  facts: authored.facts,
+  duplication: duplication ? duplication.pairs : [],
 }
