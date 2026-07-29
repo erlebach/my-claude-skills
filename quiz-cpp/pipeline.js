@@ -38,6 +38,28 @@ const sources = a.packPath
   ? `- ${a.packPath}\n  (source pack: verbatim distillation of the assigned demos. Read this INSTEAD of the demo directories. Cite the 'Source:' path given inside each topic block, never the pack itself.)`
   : (a.sourcePaths || []).map(p => `- ${p}`).join('\n')
 
+// Round 2+: only some items changed. The source check and the blind review are
+// ITEM-LOCAL - a verdict on item 7 cannot change because item 12 was rewritten -
+// so re-running them over all 22 buys nothing and costs the majority of the
+// round's output tokens, which at ~5x input are ~29% of the bill. Scope them.
+//
+// The duplication pass is NOT item-local and must NOT be scoped the same way.
+// It is pairwise, and on Quiz 2 both round-2 replacements collided with items
+// that had NOT changed that round (8<->22 at 0.65, 19<->21 at 0.70). A
+// changed-only duplication pass sees neither. It reads everything as before and
+// only narrows what it REPORTS: pairs with at least one changed item.
+const changed = Array.isArray(a.changedItems) && a.changedItems.length
+  ? [...a.changedItems].sort((x, y) => x - y)
+  : null
+
+const scopeLocal = changed
+  ? `\n\n=== SCOPE: ITEMS ${changed.join(', ')} ONLY ===\nThis is a repair round. Only these items were rewritten; every other item is byte-identical to the previous round and has already been checked. Report on THESE ITEMS ONLY. Do not report on, summarise, or re-verify any other item — their verdicts are carried forward. Read the other items only insofar as you need them for context.\n`
+  : ''
+
+const scopePairs = changed
+  ? `\n\n=== SCOPE: PAIRS INVOLVING ITEMS ${changed.join(', ')} ===\nThis is a repair round; only those items were rewritten. READ EVERY ITEM AND EVERY KEY as usual - a replacement most often collides with an item that did NOT change, which is the whole reason this check is not scoped to the new items alone. But REPORT only pairs where at least one side is in that list. Pairs of two unchanged items were already judged in an earlier round and re-scoring them adds noise, not information.\n`
+  : ''
+
 const QUIZ_SCHEMA = {
   type: 'object',
   required: ['quiz', 'key', 'unsourced'],
@@ -196,7 +218,17 @@ ${a.extraInstructions || ''}`,
   parts.push(out)
   ledger += (ledger ? '\n' : '') + String(out.facts || '')
   nextNumber += t.count
+
+  // Stream the tier out as it lands. The workflow sandbox has no filesystem, so
+  // nothing can be WRITTEN until the whole run returns - which on Quiz 2 meant
+  // generation finished at 22:50 and the files appeared at 22:56. log() is the
+  // only channel out of a running workflow, so emit the actual items, not a
+  // count of them. These lines reach the live /workflows display and are
+  // persisted to the task output file under the top-level "logs" array.
   log(`${t.tier}: ${t.count} items written; ledger now ${ledger.split('\n').length} facts`)
+  log(`===== ${t.tier} ITEMS (items ${nextNumber - t.count}-${nextNumber - 1}) =====\n${out.quiz}`)
+  log(`===== ${t.tier} FACTS LEDGER =====\n${out.facts}`)
+  if ((out.unsourced || []).length) log(`===== ${t.tier} UNSOURCED: ${out.unsourced.join(', ')} =====`)
 }
 
 authored = {
@@ -278,11 +310,15 @@ ${authored.key}
 
 If the text between those delimiters is not an answer key — it is empty, a placeholder, a file path, or a summary — STOP and report exactly that. Do NOT search the repository for another key.md to verify instead. An earlier run of this pipeline was handed a placeholder, went looking, found a previous run's key on disk, and returned a detailed and entirely confident report about items nobody had asked about. A one-line "no key was supplied" is far more useful than a thorough answer to the wrong question.
 
-For every item, open the source it cites and report:
+${scopeLocal}
+For every item IN SCOPE, open the source it cites and report:
 
 - the cited source, and whether it exists
-- SUPPORTED / PARTIAL / UNSUPPORTED / NO SOURCE — does the cited section actually support what the item asserts?
-- any term the item depends on that the cited source never introduces
+- SUPPORTED / PARTIAL / UNSUPPORTED / NO SOURCE — are the PREMISES the item rests on taught by the cited material?
+
+  Judge PREMISES, not verbatim presence of the conclusion. This quiz tests deduction, not recall. An L2 or especially an L3 item is SUPPORTED when the cited sources teach every fact the student must combine, even though the combination itself appears nowhere - that combining IS the exercise. For an L3 item a key that is stated verbatim in the corpus is a defect in the other direction: it is a recall item priced at three points. Reserve PARTIAL for a premise that is genuinely missing, and UNSUPPORTED for a key the taught material cannot reach at all.
+
+- any term the item depends on that NO source in the assigned corpus introduces - meaning a term the student needs in order to READ THE QUESTION or to have any route to the answer. This is the check that matters, and it is narrower than it looks: a rule the student must derive is not an untaught term. If a chain of taught facts reaches the key, the item is grounded even when the final step is stated nowhere. Flag a term only when its absence leaves the student with no path at all.
 
 - PLATFORM-DEPENDENT, if the item's key rests on a recorded observation — a printed value, a crash, an exit code, a sanitizer message, a diagnostic — rather than on a rule. The source material's runnable variants were recorded on one machine; their behavior is not portable, and the key must come from the explanation and the standard instead.
 
@@ -290,7 +326,7 @@ The vocabulary check is the one that matters most: an item testing a term the co
 
 Return a markdown report, one section per item, ending with a summary table.
 
-ALSO fill the verdicts array: one entry per item, every item exactly once. The field platform_dependent is true whenever the key rests on a recorded observation - a printed value, a crash, an exit code, a diagnostic, an elision the standard permits but does not mandate - rather than on a rule that holds everywhere. Put terms the item depends on that no cited source introduces into untaught_terms. This array is read by a script and decides which items get regenerated, so an item you flag in the prose but NOT in the array will be silently kept.`,
+ALSO fill the verdicts array: one entry per item IN SCOPE, each exactly once (all items when no scope is given). The field platform_dependent is true whenever the key rests on a recorded observation - a printed value, a crash, an exit code, a diagnostic, an elision the standard permits but does not mandate - rather than on a rule that holds everywhere. Put terms the item depends on that no cited source introduces into untaught_terms. This array is read by a script and decides which items get regenerated, so an item you flag in the prose but NOT in the array will be silently kept.`,
     { label: 'source-check', phase: 'Check', model: 'opus', effort: 'medium', schema: SOURCE_SCHEMA }
   ),
   () => agent(
@@ -304,7 +340,8 @@ ${authored.quiz}
 
 If the text between those delimiters is not a quiz — it is empty, a placeholder, a file path, or a summary — STOP and report exactly that. Do not invent quiz items and then review your own inventions, and do not go looking for a quiz elsewhere.
 
-Write a review. For EVERY question:
+${scopeLocal}
+Write a review. For every question IN SCOPE:
 
 1. Your answer, and your confidence (high / medium / low).
 2. One paragraph per option, including the one you chose: the strongest case a well-prepared student could make FOR it, then why it is finally right or wrong. Do not skip options you consider obviously wrong — say why they are obviously wrong.
@@ -314,7 +351,7 @@ Write a review. For EVERY question:
 
 Also flag: anything factually wrong in a stem; code that would not compile where that is not the point of the item; any option whose wording gives the key away by being longer, more hedged, or more precise than its neighbours; and — mark these PLATFORM-DEPENDENT — any item whose key would change with a different compiler, operating system, architecture, or optimization level. Students sit this on their own machines; an answer that holds only on arm64 macOS with clang is not an answer.
 
-End with a summary table having EXACTLY these seven columns, in this order:
+End with a summary table covering the in-scope questions, having EXACTLY these seven columns, in this order:
 
 | Q | Answer | Confidence | AMBIGUOUS | weak_count | expected_pass | trap_quality |
 
@@ -342,7 +379,7 @@ KEYS
 ${authored.key}
 ---
 
-Report every PAIR of items that test the same underlying fact.
+Report every PAIR of items that test the same underlying fact.${scopePairs}
 
 Judge the FACT, not the topic file. Two items citing the same file may test genuinely different rules; two items citing different files may test one rule from both sides. The second case is the one that matters and the one nothing else in this pipeline can see.
 
