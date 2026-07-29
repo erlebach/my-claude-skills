@@ -237,6 +237,57 @@ Batching moves work that a single run does invisibly out into the open, and adds
 
 **An item edited after its review is unreviewed.** This is the rule the whole structure protects. Amendments made in response to a source check are edits like any other: they do not go back into the run folder, they go into the merge, and the merged review is what clears them.
 
+## Loop termination — cost-shaped, with a hard backstop
+
+The loop stops when it stops *finding* things, not when it hits a count. But a
+cost-shaped rule must never be the only exit, because every one of them depends
+on a model's output and a model can always produce one more finding.
+
+**The termination guarantee.** The loop counter increments unconditionally at the
+top of every iteration and is never reset, decremented, or skipped on any path,
+including error paths and retries. The loop condition includes `round < 5`. That
+alone bounds the loop at five iterations regardless of what any agent returns.
+Every other rule below can only end it *sooner*.
+
+Write it so the bound is visible in one place:
+
+```
+for (let round = 1; round <= MAX_ROUNDS; round++) {   // MAX_ROUNDS = 5, constant
+    ...                                              // nothing here touches `round`
+}
+```
+
+Do not express the bound as `while (!converged)` with a counter incremented
+inside, and never `continue` past the increment. Those are the two shapes that
+turn a capped loop into an unbounded one.
+
+**Early exits, in the order they fire:**
+
+1. **Converged** — no blocking finding, and no regeneration still awaiting its
+   acceptance score. The normal ending.
+2. **No progress** — this round's blocking set is a subset of last round's, with
+   nothing newly fixed. The loop is re-reporting what it could not repair;
+   another round buys nothing.
+3. **Per-item exhaustion** — an item has been regenerated twice. It stops being
+   regenerated and escalates on its own, while the other items carry on. Track
+   this per item, not globally.
+4. **Oscillation** — an item alternates between a constraint failure and a vigor
+   rejection, or fails the same check class twice with different content. Escalate
+   immediately rather than spending the cap on it.
+5. **Budget** — a token or wall-clock ceiling, if one was set.
+
+**Round cost is not flat, so a count is a poor budget.** Round 1 generates and
+checks: 6 agents. Round 2 onward skips generation entirely: 3 agents over a quiz
+that already exists. Measured on Quiz 1 — round 1 was 950 s and 524k tokens;
+round 2 was 420 s and 150k. Later rounds are roughly 45% of the wall clock and
+30% of the tokens, which is what makes a cap of 5 affordable where a cap of 3 was
+chosen for cost alone.
+
+**Escalation is an ending, not a failure.** A loop that stops and says "item 14
+failed twice, here are both versions and what each costs" has done its job. One
+that keeps grinding until something passes has only learned to satisfy the
+checker.
+
 ## Common Mistakes
 
 | Mistake | Fix |
