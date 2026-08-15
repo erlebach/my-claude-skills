@@ -1,0 +1,58 @@
+{% include 'slide_heading_h2.html.j2' %}
+<div class="slide-content-area figure-wide-layout">
+
+  {% if rendered_fw_summary %}
+    <div class="figure-wide-summary slide-body">{{ rendered_fw_summary | safe }}</div>
+  {% endif %}
+
+  <div class="figure-wide-figure-wrap">
+    <figure class="figure-wide-figure">
+      <div class="figure-wide-media">
+        {% if rendered_mermaid %}
+          <div class="diagram-container"{{ mermaid_data_attrs | safe }}>{{ rendered_mermaid | safe }}</div>
+        {% elif rendered_svg %}
+          <div class="diagram-container" role="img" aria-label="{{ slide.alt_text | e }}">{{ rendered_svg | safe }}</div>
+        {% elif rendered_image %}
+          {{ rendered_image | safe }}
+        {% else %}
+          <img src="{{ slide.src | e }}" alt="{{ slide.alt_text | e }}">
+        {% endif %}
+      </div>
+      {% if slide.caption %}
+        <figcaption id="{{ slide_id }}-caption">{{ slide.caption | e }}</figcaption>
+      {% endif %}
+    </figure>
+  </div>
+
+  {% if rendered_fw_right_heading or rendered_fw_right_body %}
+  <div class="two-col two-col-{{ slide.proportion | replace('/', '-') }} figure-wide-columns figure-wide-below">
+    <div class="col-left">
+      {% if rendered_fw_left_heading %}
+        <h3>{{ rendered_fw_left_heading | safe }}</h3>
+      {% endif %}
+      {% if rendered_fw_left_body %}
+        <div class="slide-body">{{ rendered_fw_left_body | safe }}</div>
+      {% endif %}
+    </div>
+    <div class="col-right">
+      {% if rendered_fw_right_heading %}
+        <h3>{{ rendered_fw_right_heading | safe }}</h3>
+      {% endif %}
+      {% if rendered_fw_right_body %}
+        <div class="slide-body">{{ rendered_fw_right_body | safe }}</div>
+      {% endif %}
+    </div>
+  </div>
+  {% elif rendered_fw_left_heading or rendered_fw_left_body %}
+  <div class="figure-wide-single-col figure-wide-below">
+    {% if rendered_fw_left_heading %}
+      <h3>{{ rendered_fw_left_heading | safe }}</h3>
+    {% endif %}
+    {% if rendered_fw_left_body %}
+      <div class="slide-body">{{ rendered_fw_left_body | safe }}</div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+</div>
+{% if slide.notes %}<aside class="slide-notes" hidden aria-hidden="true">{{ slide.notes | e }}</aside>{% endif %}

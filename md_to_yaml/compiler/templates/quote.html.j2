@@ -1,0 +1,10 @@
+<h2 id="slide-{{ loop.index }}-heading" class="visually-hidden">{{ rendered_title | safe }}</h2>
+<div class="slide-content-area">
+<div class="slide-quote-block">
+<blockquote>{{ rendered_title | safe }}</blockquote>
+{% if rendered_subtitle %}<p class="slide-subtitle">{{ rendered_subtitle | safe }}</p>{% endif %}
+</div>
+{% if slide.attribution %}<p class="attribution">— {{ slide.attribution | e }}</p>{% endif %}
+{% if slide.body %}<div class="slide-body">{{ slide.body | safe }}</div>{% endif %}
+</div>
+{% if slide.notes %}<aside class="slide-notes" hidden aria-hidden="true">{{ slide.notes | e }}</aside>{% endif %}

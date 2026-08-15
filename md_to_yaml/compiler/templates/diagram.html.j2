@@ -1,0 +1,22 @@
+{% include 'slide_heading_h2.html.j2' %}
+<div class="slide-content-area">
+{% if rendered_mermaid %}
+  <div class="diagram-container"{{ mermaid_data_attrs | safe }}>
+    {{ rendered_mermaid | safe }}
+  </div>
+  {% if rendered_body %}
+  <div class="slide-body diagram-caption">{{ rendered_body | safe }}</div>
+  {% endif %}
+{% else %}
+  <div class="diagram-container" role="img" aria-label="{{ slide.alt_text | e }}">
+    {% if rendered_svg %}
+      {{ rendered_svg | safe }}
+    {% elif rendered_body %}
+      {{ rendered_body | safe }}
+    {% elif slide.body %}
+      {{ slide.body | e }}
+    {% endif %}
+  </div>
+{% endif %}
+</div>
+{% if slide.notes %}<aside class="slide-notes" hidden aria-hidden="true">{{ slide.notes | e }}</aside>{% endif %}

@@ -1,0 +1,5 @@
+{% include 'slide_heading_h2.html.j2' %}
+<div class="slide-content-area">
+{% if rendered_body %}<div class="slide-body">{{ rendered_body | safe }}</div>{% elif slide.body %}<div class="slide-body">{{ slide.body | e }}</div>{% endif %}
+</div>
+{% if slide.notes %}<aside class="slide-notes" hidden aria-hidden="true">{{ slide.notes | e }}</aside>{% endif %}

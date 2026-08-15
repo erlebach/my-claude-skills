@@ -1,0 +1,3557 @@
+{
+  "$defs": {
+    "AnimationDefaults": {
+      "additionalProperties": false,
+      "description": "Deck-level defaults merged before per-slide animation overrides.",
+      "properties": {
+        "bullet_stagger": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BulletStaggerSettings"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "bullet_focus": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BulletFocusSettings"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "AnimationDefaults",
+      "type": "object"
+    },
+    "BulletFocusSettings": {
+      "additionalProperties": false,
+      "description": "Optional GSAP key-driven focus parameters for list items.\n\nWhen a slide enables ``bullet_focus``, all list items start dimmed\nexcept the first; pressing ``key`` advances the focused bullet so\nthat exactly one item is fully opaque while the others fade to\n``dim``. Omitted fields inherit deck defaults, then skill defaults.",
+      "properties": {
+        "key": {
+          "anyOf": [
+            {
+              "maxLength": 8,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Keyboard key that advances the focused bullet (e.g. \"j\").",
+          "title": "Key"
+        },
+        "back_key": {
+          "anyOf": [
+            {
+              "maxLength": 8,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Keyboard key that moves the focus to the previous bullet (e.g. \"k\").",
+          "title": "Back Key"
+        },
+        "dim": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Opacity applied to non-focused list items.",
+          "title": "Dim"
+        },
+        "duration": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 10,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Tween duration in seconds for opacity transitions.",
+          "title": "Duration"
+        },
+        "ease": {
+          "anyOf": [
+            {
+              "maxLength": 48,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "GSAP ease string (e.g. power2.out).",
+          "title": "Ease"
+        }
+      },
+      "title": "BulletFocusSettings",
+      "type": "object"
+    },
+    "BulletStaggerSettings": {
+      "additionalProperties": false,
+      "description": "Optional GSAP stagger parameters for list items on a content slide.\n\nOmitted fields inherit from deck ``animation_defaults.bullet_stagger``,\nthen from skill defaults in ``schema.animation_defaults``.",
+      "properties": {
+        "duration": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 10,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Tween duration in seconds.",
+          "title": "Duration"
+        },
+        "stagger": {
+          "anyOf": [
+            {
+              "maximum": 5,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Delay between each list item.",
+          "title": "Stagger"
+        },
+        "ease": {
+          "anyOf": [
+            {
+              "maxLength": 48,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "GSAP ease string (e.g. power2.out).",
+          "title": "Ease"
+        },
+        "threshold": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 1,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "IntersectionObserver threshold for starting the animation.",
+          "title": "Threshold"
+        },
+        "x_offset": {
+          "anyOf": [
+            {
+              "maximum": 800,
+              "minimum": -800,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Initial horizontal offset in pixels before the tween.",
+          "title": "X Offset"
+        }
+      },
+      "title": "BulletStaggerSettings",
+      "type": "object"
+    },
+    "CodeSlide": {
+      "additionalProperties": false,
+      "description": "Code block slide: title + fenced code in Markdown body. Language for syntax highlighting.",
+      "properties": {
+        "layout": {
+          "const": "code",
+          "title": "Layout",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "subtitle": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subtitle"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        },
+        "skip": {
+          "default": false,
+          "title": "Skip",
+          "type": "boolean"
+        },
+        "math_display_scale": {
+          "anyOf": [
+            {
+              "maximum": 2.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_scale for this slide (None = inherit).",
+          "title": "Math Display Scale"
+        },
+        "math_display_center": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_center for this slide (None = inherit).",
+          "title": "Math Display Center"
+        },
+        "math_display_color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_color for this slide (None = inherit).",
+          "title": "Math Display Color"
+        },
+        "title_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck title_scale for this slide (None = use deck default).",
+          "title": "Title Scale"
+        },
+        "content_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck content_scale for this slide (None = use deck default).",
+          "title": "Content Scale"
+        },
+        "mermaid_scale_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "measured",
+                "fit"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override Mermaid sizing mode for this slide (None = compiler default). 'measured' tries to meet a readable on-screen label size; 'fit' just fits to panel.",
+          "title": "Mermaid Scale Mode"
+        },
+        "mermaid_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Multiplier applied to Mermaid SVG scale for this slide (None = compiler default). Still capped to the available panel size.",
+          "title": "Mermaid Scale"
+        },
+        "body": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Body"
+        },
+        "language": {
+          "default": "text",
+          "title": "Language",
+          "type": "string"
+        },
+        "line_numbers": {
+          "default": false,
+          "title": "Line Numbers",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "layout",
+        "title"
+      ],
+      "title": "CodeSlide",
+      "type": "object"
+    },
+    "ColumnContent": {
+      "additionalProperties": false,
+      "description": "Structured content for a two-column slide column.",
+      "properties": {
+        "type": {
+          "enum": [
+            "figure",
+            "diagram"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "src": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Src"
+        },
+        "alt_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Alt Text"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "mermaid_scale_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "measured",
+                "fit"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override Mermaid sizing mode for this column (None = compiler default). 'measured' tries to meet readable label size; 'fit' just fits to panel.",
+          "title": "Mermaid Scale Mode"
+        },
+        "mermaid_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Multiplier applied to Mermaid SVG scale for this column (None = compiler default). Still capped to the available panel size.",
+          "title": "Mermaid Scale"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "ColumnContent",
+      "type": "object"
+    },
+    "ComparisonSlide": {
+      "additionalProperties": false,
+      "description": "Side-by-side comparison: title + Markdown body with <!-- split --> marker.",
+      "properties": {
+        "layout": {
+          "const": "comparison",
+          "title": "Layout",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "subtitle": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subtitle"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        },
+        "skip": {
+          "default": false,
+          "title": "Skip",
+          "type": "boolean"
+        },
+        "math_display_scale": {
+          "anyOf": [
+            {
+              "maximum": 2.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_scale for this slide (None = inherit).",
+          "title": "Math Display Scale"
+        },
+        "math_display_center": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_center for this slide (None = inherit).",
+          "title": "Math Display Center"
+        },
+        "math_display_color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_color for this slide (None = inherit).",
+          "title": "Math Display Color"
+        },
+        "title_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck title_scale for this slide (None = use deck default).",
+          "title": "Title Scale"
+        },
+        "content_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck content_scale for this slide (None = use deck default).",
+          "title": "Content Scale"
+        },
+        "mermaid_scale_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "measured",
+                "fit"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override Mermaid sizing mode for this slide (None = compiler default). 'measured' tries to meet a readable on-screen label size; 'fit' just fits to panel.",
+          "title": "Mermaid Scale Mode"
+        },
+        "mermaid_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Multiplier applied to Mermaid SVG scale for this slide (None = compiler default). Still capped to the available panel size.",
+          "title": "Mermaid Scale"
+        },
+        "body": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Body"
+        }
+      },
+      "required": [
+        "layout",
+        "title"
+      ],
+      "title": "ComparisonSlide",
+      "type": "object"
+    },
+    "ContentSlide": {
+      "additionalProperties": false,
+      "description": "Presentation content slide: title + Markdown body (md_to_yaml default).",
+      "properties": {
+        "layout": {
+          "const": "content",
+          "title": "Layout",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "subtitle": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subtitle"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        },
+        "skip": {
+          "default": false,
+          "title": "Skip",
+          "type": "boolean"
+        },
+        "math_display_scale": {
+          "anyOf": [
+            {
+              "maximum": 2.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_scale for this slide (None = inherit).",
+          "title": "Math Display Scale"
+        },
+        "math_display_center": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_center for this slide (None = inherit).",
+          "title": "Math Display Center"
+        },
+        "math_display_color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_color for this slide (None = inherit).",
+          "title": "Math Display Color"
+        },
+        "title_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck title_scale for this slide (None = use deck default).",
+          "title": "Title Scale"
+        },
+        "content_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck content_scale for this slide (None = use deck default).",
+          "title": "Content Scale"
+        },
+        "mermaid_scale_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "measured",
+                "fit"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override Mermaid sizing mode for this slide (None = compiler default). 'measured' tries to meet a readable on-screen label size; 'fit' just fits to panel.",
+          "title": "Mermaid Scale Mode"
+        },
+        "mermaid_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Multiplier applied to Mermaid SVG scale for this slide (None = compiler default). Still capped to the available panel size.",
+          "title": "Mermaid Scale"
+        },
+        "body": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Body"
+        },
+        "bullet_animation": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "const": "stagger",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/BulletStaggerSettings"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "If true or \"stagger\", animate list items when the slide is revealed. Use an object to override duration, stagger, ease, threshold, or x_offset.",
+          "title": "Bullet Animation"
+        },
+        "bullet_focus": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/$defs/BulletFocusSettings"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "If true, dim all list items except the first; pressing the configured key (default \"j\") advances the focused bullet. Use an object to override key, dim opacity, duration, or ease.",
+          "title": "Bullet Focus"
+        }
+      },
+      "required": [
+        "layout",
+        "title"
+      ],
+      "title": "ContentSlide",
+      "type": "object"
+    },
+    "DeckMetadata": {
+      "additionalProperties": false,
+      "description": "Deck-level metadata from the first frontmatter block.\n\nAttributes:\n    flavor: If ``'transcript'``, HTML uses dense left-aligned styling for\n        ``content`` and ``table`` slides (transcript / transcribe_to_html).\n        Omitted for standard presentation decks.",
+      "properties": {
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "author": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Author"
+        },
+        "date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Date"
+        },
+        "theme": {
+          "default": "dark",
+          "enum": [
+            "dark",
+            "light"
+          ],
+          "title": "Theme",
+          "type": "string"
+        },
+        "accent_color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Accent Color"
+        },
+        "font": {
+          "default": "IBM Plex Sans",
+          "title": "Font",
+          "type": "string"
+        },
+        "macros": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Macros"
+        },
+        "title_font_size": {
+          "default": "2.4rem",
+          "title": "Title Font Size",
+          "type": "string"
+        },
+        "title_top_margin": {
+          "default": "0.5rem",
+          "title": "Title Top Margin",
+          "type": "string"
+        },
+        "flavor": {
+          "anyOf": [
+            {
+              "const": "transcript",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Flavor"
+        },
+        "math_display_scale": {
+          "default": 1.0,
+          "description": "Multiplier for $$...$$ display math font size vs slide body.",
+          "maximum": 2.0,
+          "minimum": 0.75,
+          "title": "Math Display Scale",
+          "type": "number"
+        },
+        "math_display_center": {
+          "default": true,
+          "description": "If True, display math is centered; if False, aligned with body text.",
+          "title": "Math Display Center",
+          "type": "boolean"
+        },
+        "math_display_color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional CSS color for $$...$$ (display / block) math in slide bodies and tables.",
+          "title": "Math Display Color"
+        },
+        "view_scale": {
+          "default": 1.0,
+          "description": "Default in-page view scale for slide content (not the browser tab zoom).",
+          "maximum": 4.0,
+          "minimum": 0.25,
+          "title": "View Scale",
+          "type": "number"
+        },
+        "remember_view_scale": {
+          "default": false,
+          "description": "If True, persist view-scale adjustments in localStorage.",
+          "title": "Remember View Scale",
+          "type": "boolean"
+        },
+        "bake_mermaid": {
+          "default": false,
+          "description": "If True, pre-render Mermaid diagrams to inline SVG at compile time (requires mmdc); makes the deck offline and cross-browser deterministic.",
+          "title": "Bake Mermaid",
+          "type": "boolean"
+        },
+        "title_scale": {
+          "default": 1.0,
+          "description": "Multiplier for slide titles, heading stacks, and hero text (combined with --font-scale).",
+          "maximum": 4.0,
+          "minimum": 0.75,
+          "title": "Title Scale",
+          "type": "number"
+        },
+        "content_scale": {
+          "default": 1.0,
+          "description": "Multiplier for body, captions, tables, code, and non-title prose (combined with --font-scale).",
+          "maximum": 4.0,
+          "minimum": 0.75,
+          "title": "Content Scale",
+          "type": "number"
+        },
+        "figure_scale": {
+          "default": 1.0,
+          "description": "Default scale for layout: figure and figure-wide \u2014 multiplies the width cap and matching max-height (vh) so media scales proportionally; the figure panel uses width: fit-content up to the cap.",
+          "maximum": 4.0,
+          "minimum": 0.25,
+          "title": "Figure Scale",
+          "type": "number"
+        },
+        "figure_layout_debug": {
+          "default": false,
+          "description": "If True, draw red debug borders on layout: figure .figure-asset-wrap (panel) and inner graphic (img / .diagram-container).",
+          "title": "Figure Layout Debug",
+          "type": "boolean"
+        },
+        "footer_scale": {
+          "default": 1.0,
+          "description": "Multiplies the fixed bottom bar (page counter, view-scale, go-to) font sizes and padding; set on the root as CSS --footer-scale.",
+          "maximum": 2.5,
+          "minimum": 0.5,
+          "title": "Footer Scale",
+          "type": "number"
+        },
+        "footer_inset": {
+          "default": "0.5in",
+          "description": "CSS length for the fixed footer nav distance from the viewport bottom (e.g. 0.5in \u2014 half a inch margin above the screen edge; default 0.5in was 1in).",
+          "title": "Footer Inset",
+          "type": "string"
+        },
+        "animation_defaults": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AnimationDefaults"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Deck-wide animation defaults; merged with skill defaults, then per-slide bullet_animation overrides."
+        },
+        "gsap_script_url": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "HTTPS URL for the GSAP script tag. When omitted, the md_to_yaml skill default CDN URL is used.",
+          "title": "Gsap Script Url"
+        }
+      },
+      "required": [
+        "title"
+      ],
+      "title": "DeckMetadata",
+      "type": "object"
+    },
+    "DiagramSlide": {
+      "additionalProperties": false,
+      "description": "SVG/Mermaid diagram slide. alt_text is required for ADA compliance.",
+      "properties": {
+        "layout": {
+          "const": "diagram",
+          "title": "Layout",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "subtitle": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subtitle"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        },
+        "skip": {
+          "default": false,
+          "title": "Skip",
+          "type": "boolean"
+        },
+        "math_display_scale": {
+          "anyOf": [
+            {
+              "maximum": 2.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_scale for this slide (None = inherit).",
+          "title": "Math Display Scale"
+        },
+        "math_display_center": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_center for this slide (None = inherit).",
+          "title": "Math Display Center"
+        },
+        "math_display_color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_color for this slide (None = inherit).",
+          "title": "Math Display Color"
+        },
+        "title_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck title_scale for this slide (None = use deck default).",
+          "title": "Title Scale"
+        },
+        "content_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck content_scale for this slide (None = use deck default).",
+          "title": "Content Scale"
+        },
+        "mermaid_scale_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "measured",
+                "fit"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override Mermaid sizing mode for this slide (None = compiler default). 'measured' tries to meet a readable on-screen label size; 'fit' just fits to panel.",
+          "title": "Mermaid Scale Mode"
+        },
+        "mermaid_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Multiplier applied to Mermaid SVG scale for this slide (None = compiler default). Still capped to the available panel size.",
+          "title": "Mermaid Scale"
+        },
+        "body": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Body"
+        },
+        "alt_text": {
+          "title": "Alt Text",
+          "type": "string"
+        },
+        "panel_scale": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Shrink the diagram panel relative to its default size (the full content area): a single fraction applies to both axes, a two-item list is [horizontal, vertical]. Each value 0.2-1.0.",
+          "title": "Panel Scale"
+        }
+      },
+      "required": [
+        "layout",
+        "title",
+        "alt_text"
+      ],
+      "title": "DiagramSlide",
+      "type": "object"
+    },
+    "DividerSlide": {
+      "additionalProperties": false,
+      "description": "Visual section break: title only (rendered as full-bleed divider).",
+      "properties": {
+        "layout": {
+          "const": "divider",
+          "title": "Layout",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "subtitle": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subtitle"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        },
+        "skip": {
+          "default": false,
+          "title": "Skip",
+          "type": "boolean"
+        },
+        "math_display_scale": {
+          "anyOf": [
+            {
+              "maximum": 2.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_scale for this slide (None = inherit).",
+          "title": "Math Display Scale"
+        },
+        "math_display_center": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_center for this slide (None = inherit).",
+          "title": "Math Display Center"
+        },
+        "math_display_color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_color for this slide (None = inherit).",
+          "title": "Math Display Color"
+        },
+        "title_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck title_scale for this slide (None = use deck default).",
+          "title": "Title Scale"
+        },
+        "content_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck content_scale for this slide (None = use deck default).",
+          "title": "Content Scale"
+        },
+        "mermaid_scale_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "measured",
+                "fit"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override Mermaid sizing mode for this slide (None = compiler default). 'measured' tries to meet a readable on-screen label size; 'fit' just fits to panel.",
+          "title": "Mermaid Scale Mode"
+        },
+        "mermaid_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Multiplier applied to Mermaid SVG scale for this slide (None = compiler default). Still capped to the available panel size.",
+          "title": "Mermaid Scale"
+        },
+        "body": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Body"
+        }
+      },
+      "required": [
+        "layout",
+        "title"
+      ],
+      "title": "DividerSlide",
+      "type": "object"
+    },
+    "FigureSlide": {
+      "additionalProperties": false,
+      "description": "Image/diagram slide. Extension determines rendering: .jpg/.png/.gif/.webp \u2192 <img>, .svg \u2192 inline SVG, .mmd \u2192 Mermaid. alt_text required.",
+      "properties": {
+        "layout": {
+          "const": "figure",
+          "title": "Layout",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "subtitle": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subtitle"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        },
+        "skip": {
+          "default": false,
+          "title": "Skip",
+          "type": "boolean"
+        },
+        "math_display_scale": {
+          "anyOf": [
+            {
+              "maximum": 2.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_scale for this slide (None = inherit).",
+          "title": "Math Display Scale"
+        },
+        "math_display_center": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_center for this slide (None = inherit).",
+          "title": "Math Display Center"
+        },
+        "math_display_color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_color for this slide (None = inherit).",
+          "title": "Math Display Color"
+        },
+        "title_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck title_scale for this slide (None = use deck default).",
+          "title": "Title Scale"
+        },
+        "content_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck content_scale for this slide (None = use deck default).",
+          "title": "Content Scale"
+        },
+        "mermaid_scale_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "measured",
+                "fit"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override Mermaid sizing mode for this slide (None = compiler default). 'measured' tries to meet a readable on-screen label size; 'fit' just fits to panel.",
+          "title": "Mermaid Scale Mode"
+        },
+        "mermaid_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Multiplier applied to Mermaid SVG scale for this slide (None = compiler default). Still capped to the available panel size.",
+          "title": "Mermaid Scale"
+        },
+        "body": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Body"
+        },
+        "src": {
+          "title": "Src",
+          "type": "string"
+        },
+        "alt_text": {
+          "title": "Alt Text",
+          "type": "string"
+        },
+        "figure_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck figure_scale for this slide (None = use deck default).",
+          "title": "Figure Scale"
+        }
+      },
+      "required": [
+        "layout",
+        "title",
+        "src",
+        "alt_text"
+      ],
+      "title": "FigureSlide",
+      "type": "object"
+    },
+    "FigureWideSlide": {
+      "additionalProperties": false,
+      "description": "Wide-figure layout: full-width figure + two text columns below.\n\nFront matter holds figure metadata only (src, alt_text, caption, proportion).\nBody Markdown is parsed by the engine into summary, left-column, and\nright-column sections delimited by level-2 headings.",
+      "properties": {
+        "layout": {
+          "const": "figure-wide",
+          "title": "Layout",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "subtitle": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subtitle"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        },
+        "skip": {
+          "default": false,
+          "title": "Skip",
+          "type": "boolean"
+        },
+        "math_display_scale": {
+          "anyOf": [
+            {
+              "maximum": 2.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_scale for this slide (None = inherit).",
+          "title": "Math Display Scale"
+        },
+        "math_display_center": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_center for this slide (None = inherit).",
+          "title": "Math Display Center"
+        },
+        "math_display_color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_color for this slide (None = inherit).",
+          "title": "Math Display Color"
+        },
+        "title_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck title_scale for this slide (None = use deck default).",
+          "title": "Title Scale"
+        },
+        "content_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck content_scale for this slide (None = use deck default).",
+          "title": "Content Scale"
+        },
+        "mermaid_scale_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "measured",
+                "fit"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override Mermaid sizing mode for this slide (None = compiler default). 'measured' tries to meet a readable on-screen label size; 'fit' just fits to panel.",
+          "title": "Mermaid Scale Mode"
+        },
+        "mermaid_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Multiplier applied to Mermaid SVG scale for this slide (None = compiler default). Still capped to the available panel size.",
+          "title": "Mermaid Scale"
+        },
+        "body": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Body"
+        },
+        "src": {
+          "title": "Src",
+          "type": "string"
+        },
+        "alt_text": {
+          "title": "Alt Text",
+          "type": "string"
+        },
+        "caption": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Caption"
+        },
+        "proportion": {
+          "default": "50/50",
+          "enum": [
+            "50/50",
+            "40/60",
+            "60/40"
+          ],
+          "title": "Proportion",
+          "type": "string"
+        },
+        "figure_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck figure_scale for this slide (None = use deck default).",
+          "title": "Figure Scale"
+        }
+      },
+      "required": [
+        "layout",
+        "title",
+        "src",
+        "alt_text"
+      ],
+      "title": "FigureWideSlide",
+      "type": "object"
+    },
+    "HeroSlide": {
+      "additionalProperties": false,
+      "description": "Section opener within a deck: section title + optional description.",
+      "properties": {
+        "layout": {
+          "const": "hero",
+          "title": "Layout",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "subtitle": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subtitle"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        },
+        "skip": {
+          "default": false,
+          "title": "Skip",
+          "type": "boolean"
+        },
+        "math_display_scale": {
+          "anyOf": [
+            {
+              "maximum": 2.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_scale for this slide (None = inherit).",
+          "title": "Math Display Scale"
+        },
+        "math_display_center": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_center for this slide (None = inherit).",
+          "title": "Math Display Center"
+        },
+        "math_display_color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_color for this slide (None = inherit).",
+          "title": "Math Display Color"
+        },
+        "title_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck title_scale for this slide (None = use deck default).",
+          "title": "Title Scale"
+        },
+        "content_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck content_scale for this slide (None = use deck default).",
+          "title": "Content Scale"
+        },
+        "mermaid_scale_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "measured",
+                "fit"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override Mermaid sizing mode for this slide (None = compiler default). 'measured' tries to meet a readable on-screen label size; 'fit' just fits to panel.",
+          "title": "Mermaid Scale Mode"
+        },
+        "mermaid_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Multiplier applied to Mermaid SVG scale for this slide (None = compiler default). Still capped to the available panel size.",
+          "title": "Mermaid Scale"
+        },
+        "body": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Body"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        }
+      },
+      "required": [
+        "layout",
+        "title"
+      ],
+      "title": "HeroSlide",
+      "type": "object"
+    },
+    "ProofSlide": {
+      "additionalProperties": false,
+      "description": "Proof or derivation slide (Mathematical flavor).\n\nIdentical rendering to ContentSlide; distinguished layout type for\nfuture visual differentiation and slide-count statistics.",
+      "properties": {
+        "layout": {
+          "const": "proof",
+          "title": "Layout",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "subtitle": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subtitle"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        },
+        "skip": {
+          "default": false,
+          "title": "Skip",
+          "type": "boolean"
+        },
+        "math_display_scale": {
+          "anyOf": [
+            {
+              "maximum": 2.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_scale for this slide (None = inherit).",
+          "title": "Math Display Scale"
+        },
+        "math_display_center": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_center for this slide (None = inherit).",
+          "title": "Math Display Center"
+        },
+        "math_display_color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_color for this slide (None = inherit).",
+          "title": "Math Display Color"
+        },
+        "title_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck title_scale for this slide (None = use deck default).",
+          "title": "Title Scale"
+        },
+        "content_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck content_scale for this slide (None = use deck default).",
+          "title": "Content Scale"
+        },
+        "mermaid_scale_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "measured",
+                "fit"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override Mermaid sizing mode for this slide (None = compiler default). 'measured' tries to meet a readable on-screen label size; 'fit' just fits to panel.",
+          "title": "Mermaid Scale Mode"
+        },
+        "mermaid_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Multiplier applied to Mermaid SVG scale for this slide (None = compiler default). Still capped to the available panel size.",
+          "title": "Mermaid Scale"
+        },
+        "body": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Body"
+        }
+      },
+      "required": [
+        "layout",
+        "title"
+      ],
+      "title": "ProofSlide",
+      "type": "object"
+    },
+    "QuoteSlide": {
+      "additionalProperties": false,
+      "description": "Pull-quote slide: title (the quote) + optional attribution.",
+      "properties": {
+        "layout": {
+          "const": "quote",
+          "title": "Layout",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "subtitle": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subtitle"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        },
+        "skip": {
+          "default": false,
+          "title": "Skip",
+          "type": "boolean"
+        },
+        "math_display_scale": {
+          "anyOf": [
+            {
+              "maximum": 2.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_scale for this slide (None = inherit).",
+          "title": "Math Display Scale"
+        },
+        "math_display_center": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_center for this slide (None = inherit).",
+          "title": "Math Display Center"
+        },
+        "math_display_color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_color for this slide (None = inherit).",
+          "title": "Math Display Color"
+        },
+        "title_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck title_scale for this slide (None = use deck default).",
+          "title": "Title Scale"
+        },
+        "content_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck content_scale for this slide (None = use deck default).",
+          "title": "Content Scale"
+        },
+        "mermaid_scale_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "measured",
+                "fit"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override Mermaid sizing mode for this slide (None = compiler default). 'measured' tries to meet a readable on-screen label size; 'fit' just fits to panel.",
+          "title": "Mermaid Scale Mode"
+        },
+        "mermaid_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Multiplier applied to Mermaid SVG scale for this slide (None = compiler default). Still capped to the available panel size.",
+          "title": "Mermaid Scale"
+        },
+        "body": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Body"
+        },
+        "attribution": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Attribution"
+        }
+      },
+      "required": [
+        "layout",
+        "title"
+      ],
+      "title": "QuoteSlide",
+      "type": "object"
+    },
+    "StepsSlide": {
+      "additionalProperties": false,
+      "description": "Numbered steps slide: title + ordered list in Markdown body.",
+      "properties": {
+        "layout": {
+          "const": "steps",
+          "title": "Layout",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "subtitle": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subtitle"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        },
+        "skip": {
+          "default": false,
+          "title": "Skip",
+          "type": "boolean"
+        },
+        "math_display_scale": {
+          "anyOf": [
+            {
+              "maximum": 2.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_scale for this slide (None = inherit).",
+          "title": "Math Display Scale"
+        },
+        "math_display_center": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_center for this slide (None = inherit).",
+          "title": "Math Display Center"
+        },
+        "math_display_color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_color for this slide (None = inherit).",
+          "title": "Math Display Color"
+        },
+        "title_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck title_scale for this slide (None = use deck default).",
+          "title": "Title Scale"
+        },
+        "content_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck content_scale for this slide (None = use deck default).",
+          "title": "Content Scale"
+        },
+        "mermaid_scale_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "measured",
+                "fit"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override Mermaid sizing mode for this slide (None = compiler default). 'measured' tries to meet a readable on-screen label size; 'fit' just fits to panel.",
+          "title": "Mermaid Scale Mode"
+        },
+        "mermaid_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Multiplier applied to Mermaid SVG scale for this slide (None = compiler default). Still capped to the available panel size.",
+          "title": "Mermaid Scale"
+        },
+        "body": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Body"
+        }
+      },
+      "required": [
+        "layout",
+        "title"
+      ],
+      "title": "StepsSlide",
+      "type": "object"
+    },
+    "SummarySlide": {
+      "additionalProperties": false,
+      "description": "Summary/recap slide: visually distinct from content (e.g., checkmark bullets).",
+      "properties": {
+        "layout": {
+          "const": "summary",
+          "title": "Layout",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "subtitle": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subtitle"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        },
+        "skip": {
+          "default": false,
+          "title": "Skip",
+          "type": "boolean"
+        },
+        "math_display_scale": {
+          "anyOf": [
+            {
+              "maximum": 2.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_scale for this slide (None = inherit).",
+          "title": "Math Display Scale"
+        },
+        "math_display_center": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_center for this slide (None = inherit).",
+          "title": "Math Display Center"
+        },
+        "math_display_color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_color for this slide (None = inherit).",
+          "title": "Math Display Color"
+        },
+        "title_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck title_scale for this slide (None = use deck default).",
+          "title": "Title Scale"
+        },
+        "content_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck content_scale for this slide (None = use deck default).",
+          "title": "Content Scale"
+        },
+        "mermaid_scale_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "measured",
+                "fit"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override Mermaid sizing mode for this slide (None = compiler default). 'measured' tries to meet a readable on-screen label size; 'fit' just fits to panel.",
+          "title": "Mermaid Scale Mode"
+        },
+        "mermaid_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Multiplier applied to Mermaid SVG scale for this slide (None = compiler default). Still capped to the available panel size.",
+          "title": "Mermaid Scale"
+        },
+        "body": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Body"
+        }
+      },
+      "required": [
+        "layout",
+        "title"
+      ],
+      "title": "SummarySlide",
+      "type": "object"
+    },
+    "TableCell": {
+      "additionalProperties": false,
+      "description": "A table cell with optional colspan (for spanning header rows).",
+      "properties": {
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "colspan": {
+          "default": 1,
+          "title": "Colspan",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "TableCell",
+      "type": "object"
+    },
+    "TableSlide": {
+      "additionalProperties": false,
+      "description": "Data table with accessible markup.",
+      "properties": {
+        "layout": {
+          "const": "table",
+          "title": "Layout",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "subtitle": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subtitle"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        },
+        "skip": {
+          "default": false,
+          "title": "Skip",
+          "type": "boolean"
+        },
+        "math_display_scale": {
+          "anyOf": [
+            {
+              "maximum": 2.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_scale for this slide (None = inherit).",
+          "title": "Math Display Scale"
+        },
+        "math_display_center": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_center for this slide (None = inherit).",
+          "title": "Math Display Center"
+        },
+        "math_display_color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_color for this slide (None = inherit).",
+          "title": "Math Display Color"
+        },
+        "title_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck title_scale for this slide (None = use deck default).",
+          "title": "Title Scale"
+        },
+        "content_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck content_scale for this slide (None = use deck default).",
+          "title": "Content Scale"
+        },
+        "mermaid_scale_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "measured",
+                "fit"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override Mermaid sizing mode for this slide (None = compiler default). 'measured' tries to meet a readable on-screen label size; 'fit' just fits to panel.",
+          "title": "Mermaid Scale Mode"
+        },
+        "mermaid_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Multiplier applied to Mermaid SVG scale for this slide (None = compiler default). Still capped to the available panel size.",
+          "title": "Mermaid Scale"
+        },
+        "body": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Body"
+        },
+        "caption": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Caption"
+        },
+        "headers": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Headers",
+          "type": "array"
+        },
+        "rows": {
+          "items": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/$defs/TableCell"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          "title": "Rows",
+          "type": "array"
+        },
+        "row_headers": {
+          "default": false,
+          "title": "Row Headers",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "layout",
+        "title"
+      ],
+      "title": "TableSlide",
+      "type": "object"
+    },
+    "TitleSlide": {
+      "additionalProperties": false,
+      "description": "Deck opener: big title + optional subtitle + optional author.",
+      "properties": {
+        "layout": {
+          "const": "title",
+          "title": "Layout",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "subtitle": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subtitle"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        },
+        "skip": {
+          "default": false,
+          "title": "Skip",
+          "type": "boolean"
+        },
+        "math_display_scale": {
+          "anyOf": [
+            {
+              "maximum": 2.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_scale for this slide (None = inherit).",
+          "title": "Math Display Scale"
+        },
+        "math_display_center": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_center for this slide (None = inherit).",
+          "title": "Math Display Center"
+        },
+        "math_display_color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_color for this slide (None = inherit).",
+          "title": "Math Display Color"
+        },
+        "title_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck title_scale for this slide (None = use deck default).",
+          "title": "Title Scale"
+        },
+        "content_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck content_scale for this slide (None = use deck default).",
+          "title": "Content Scale"
+        },
+        "mermaid_scale_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "measured",
+                "fit"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override Mermaid sizing mode for this slide (None = compiler default). 'measured' tries to meet a readable on-screen label size; 'fit' just fits to panel.",
+          "title": "Mermaid Scale Mode"
+        },
+        "mermaid_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Multiplier applied to Mermaid SVG scale for this slide (None = compiler default). Still capped to the available panel size.",
+          "title": "Mermaid Scale"
+        },
+        "body": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Body"
+        },
+        "author": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Author"
+        }
+      },
+      "required": [
+        "layout",
+        "title"
+      ],
+      "title": "TitleSlide",
+      "type": "object"
+    },
+    "TranscribeSlide": {
+      "additionalProperties": false,
+      "description": "Dense transcription slide: same body pipeline as content; transcribe CSS in HTML.",
+      "properties": {
+        "layout": {
+          "const": "transcribe",
+          "title": "Layout",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "subtitle": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subtitle"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        },
+        "skip": {
+          "default": false,
+          "title": "Skip",
+          "type": "boolean"
+        },
+        "math_display_scale": {
+          "anyOf": [
+            {
+              "maximum": 2.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_scale for this slide (None = inherit).",
+          "title": "Math Display Scale"
+        },
+        "math_display_center": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_center for this slide (None = inherit).",
+          "title": "Math Display Center"
+        },
+        "math_display_color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_color for this slide (None = inherit).",
+          "title": "Math Display Color"
+        },
+        "title_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck title_scale for this slide (None = use deck default).",
+          "title": "Title Scale"
+        },
+        "content_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck content_scale for this slide (None = use deck default).",
+          "title": "Content Scale"
+        },
+        "mermaid_scale_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "measured",
+                "fit"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override Mermaid sizing mode for this slide (None = compiler default). 'measured' tries to meet a readable on-screen label size; 'fit' just fits to panel.",
+          "title": "Mermaid Scale Mode"
+        },
+        "mermaid_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Multiplier applied to Mermaid SVG scale for this slide (None = compiler default). Still capped to the available panel size.",
+          "title": "Mermaid Scale"
+        },
+        "body": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Body"
+        },
+        "bullet_animation": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "const": "stagger",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/BulletStaggerSettings"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Same as content slides: optional GSAP stagger for list items.",
+          "title": "Bullet Animation"
+        },
+        "bullet_focus": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/$defs/BulletFocusSettings"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Same as content slides: optional key-driven bullet focus.",
+          "title": "Bullet Focus"
+        }
+      },
+      "required": [
+        "layout",
+        "title"
+      ],
+      "title": "TranscribeSlide",
+      "type": "object"
+    },
+    "TwoColumnSlide": {
+      "additionalProperties": false,
+      "description": "Two-column layout. Structured columns go in left/right; free text goes in body.",
+      "properties": {
+        "layout": {
+          "const": "two-column",
+          "title": "Layout",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "subtitle": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subtitle"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        },
+        "skip": {
+          "default": false,
+          "title": "Skip",
+          "type": "boolean"
+        },
+        "math_display_scale": {
+          "anyOf": [
+            {
+              "maximum": 2.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_scale for this slide (None = inherit).",
+          "title": "Math Display Scale"
+        },
+        "math_display_center": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_center for this slide (None = inherit).",
+          "title": "Math Display Center"
+        },
+        "math_display_color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck math_display_color for this slide (None = inherit).",
+          "title": "Math Display Color"
+        },
+        "title_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck title_scale for this slide (None = use deck default).",
+          "title": "Title Scale"
+        },
+        "content_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.75,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck content_scale for this slide (None = use deck default).",
+          "title": "Content Scale"
+        },
+        "mermaid_scale_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "measured",
+                "fit"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override Mermaid sizing mode for this slide (None = compiler default). 'measured' tries to meet a readable on-screen label size; 'fit' just fits to panel.",
+          "title": "Mermaid Scale Mode"
+        },
+        "mermaid_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Multiplier applied to Mermaid SVG scale for this slide (None = compiler default). Still capped to the available panel size.",
+          "title": "Mermaid Scale"
+        },
+        "body": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Body"
+        },
+        "left": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ColumnContent"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "right": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ColumnContent"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "proportion": {
+          "default": "50/50",
+          "enum": [
+            "50/50",
+            "40/60",
+            "60/40"
+          ],
+          "title": "Proportion",
+          "type": "string"
+        },
+        "panel_scale": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Shrink diagram column panels relative to their default size (the full column band): a single fraction applies to both axes, a two-item list is [horizontal, vertical]. Each value 0.2-1.0.",
+          "title": "Panel Scale"
+        }
+      },
+      "required": [
+        "layout",
+        "title"
+      ],
+      "title": "TwoColumnSlide",
+      "type": "object"
+    }
+  },
+  "description": "Top-level deck container: metadata + ordered list of slides.",
+  "properties": {
+    "metadata": {
+      "$ref": "#/$defs/DeckMetadata"
+    },
+    "slides": {
+      "items": {
+        "discriminator": {
+          "mapping": {
+            "code": "#/$defs/CodeSlide",
+            "comparison": "#/$defs/ComparisonSlide",
+            "content": "#/$defs/ContentSlide",
+            "diagram": "#/$defs/DiagramSlide",
+            "divider": "#/$defs/DividerSlide",
+            "figure": "#/$defs/FigureSlide",
+            "figure-wide": "#/$defs/FigureWideSlide",
+            "hero": "#/$defs/HeroSlide",
+            "proof": "#/$defs/ProofSlide",
+            "quote": "#/$defs/QuoteSlide",
+            "steps": "#/$defs/StepsSlide",
+            "summary": "#/$defs/SummarySlide",
+            "table": "#/$defs/TableSlide",
+            "title": "#/$defs/TitleSlide",
+            "transcribe": "#/$defs/TranscribeSlide",
+            "two-column": "#/$defs/TwoColumnSlide"
+          },
+          "propertyName": "layout"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/TitleSlide"
+          },
+          {
+            "$ref": "#/$defs/HeroSlide"
+          },
+          {
+            "$ref": "#/$defs/ContentSlide"
+          },
+          {
+            "$ref": "#/$defs/TranscribeSlide"
+          },
+          {
+            "$ref": "#/$defs/DividerSlide"
+          },
+          {
+            "$ref": "#/$defs/FigureSlide"
+          },
+          {
+            "$ref": "#/$defs/FigureWideSlide"
+          },
+          {
+            "$ref": "#/$defs/DiagramSlide"
+          },
+          {
+            "$ref": "#/$defs/TwoColumnSlide"
+          },
+          {
+            "$ref": "#/$defs/QuoteSlide"
+          },
+          {
+            "$ref": "#/$defs/ComparisonSlide"
+          },
+          {
+            "$ref": "#/$defs/CodeSlide"
+          },
+          {
+            "$ref": "#/$defs/StepsSlide"
+          },
+          {
+            "$ref": "#/$defs/SummarySlide"
+          },
+          {
+            "$ref": "#/$defs/TableSlide"
+          },
+          {
+            "$ref": "#/$defs/ProofSlide"
+          }
+        ]
+      },
+      "title": "Slides",
+      "type": "array"
+    }
+  },
+  "required": [
+    "metadata",
+    "slides"
+  ],
+  "title": "Deck",
+  "type": "object"
+}

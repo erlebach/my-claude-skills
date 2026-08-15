@@ -90,23 +90,34 @@ e) 3
 
 ## Deliverables
 
-Every quiz is written to its own folder, never to the chat alone. **One folder per quiz in the course, holding one folder per pipeline run:**
+Every quiz is written to its own folder, never to the chat alone. **One folder per quiz in the course, holding one folder per verification loop:**
 
 ```
-quiz-<N>/                                   # one per quiz in the course — quiz-1, quiz-2, …
-    quiz_<N>_<YYYY-MM-DD_HHhMMmEST>/        # one per pipeline run; a quiz may need several
-        quiz.md          # student paper version — no keys, options shuffled
-        key.md           # instructor version — keys, point value, tier, source per item
-        source_check.md  # source verification, from a key-aware subagent
-        analysis.md      # key-blind review, from a separate subagent
-    final_analysis_<YYYY-MM-DD_HHhMMmEST>/  # the paper the students sit — see Selection
-        selection.md     # the pool, compared across runs, for the author to cut from
-        quiz.md          # merged, renumbered 1–N
-        key.md           # merged, with a run-and-item provenance column
-        analysis.md      # one key-blind review over the merged paper
+quiz-<N>/                                    # one per quiz in the course — quiz-1, quiz-2, …
+    build_<YYYY-MM-DD_HHhMMmEST>/            # one per loop; the quiz is built here, start to finish
+        quiz.md          # CURRENT student version — no keys
+        key.md           # CURRENT instructor version — keys, points, tier, source per item
+        source_check.md  # current source verification
+        analysis.md      # current key-blind review
+        loop_state.json  # THE LOOP'S OWN STATE — see below
+        rounds/
+            round-1/                 # immutable snapshot of the round, written when it ends
+                quiz.md  key.md  source_check.md  analysis.md
+                facts.txt            # one line per item: the single fact it tests — the ledger
+                verdicts.json        # per-item source verdict, machine-readable
+                duplication.json     # item pairs testing the same fact, with confidence
+            round-2/                 # …plus replacements.json: which items were regenerated, and why
 ```
 
-A run folder is an **input**, never the product. It is immutable once written: if an item is amended afterwards, the amendment belongs in the merge, and it re-enters review there. Source packs are shared across quizzes and sit beside the quiz folders, not inside them.
+**`loop_state.json` is not optional bookkeeping — without it the loop's state lives only in the session's head.** Write it at the build root and update it every round. It carries: the round number and the cap; per-item regeneration attempts (so the two-attempt escalation limit is checkable, not remembered); each round's gate result, verdict counts, disagreements, ambiguous items, `same_fact` pairs and blocking set; the measured cost; **every termination rule evaluated at the end of each round with its verdict and the resulting decision**; the items kept despite a flag and why; and any decision outstanding for the author.
+
+The test: a fresh session must be able to open that one file and say what round it is on, which items are near escalation, why the loop did not stop last round, and what it has chosen not to fix. Re-deriving that from four round folders is how a resumed loop repeats a round or blows past its cap.
+
+**An incomplete round folder must say so.** A round that has been regenerated and gated but whose checks are still running looks exactly like a round that died — same four missing files. Drop a `STATUS.txt` naming which artifacts are final, which are pending, and the words *incomplete, not failed*; delete it when the check artifacts land. This is the same rule as "a failed run writes nothing — say so", one level down.
+
+The **top-level files are the product**; the `rounds/` folders are the trace. A round folder is immutable once written — a later round writes a *new* folder and refreshes the top-level copies. Never overwrite a round; the whole point is that the repair history is inspectable.
+
+Source packs are shared across quizzes and sit beside the quiz folders (`quizzes/source_packs/`), not inside them.
 
 Get every timestamp from `date` — do not invent one. The course profile says where the tree lives; if there is no profile, ask.
 
@@ -118,17 +129,18 @@ Get every timestamp from `date` — do not invent one. The course profile says w
 
 | Stage | Produces | Model | Effort |
 |---|---|---|---|
-| Generation | `quiz.md` + `key.md` | Opus 5 | medium |
-| Source check | `source_check.md` | Opus 5 | medium |
+| Generation — one agent per tier, L3 → L2 → L1 | `quiz.md` + `key.md` + `facts.txt` | Opus 5 | medium |
+| Source check | `source_check.md` + `verdicts.json` | Opus 5 | medium |
 | Key-blind review | `analysis.md` | Opus 5 | **high** |
+| Duplication | `duplication.json` | Opus 5 | **high** |
 
-The review gets the highest effort because it is the stage doing genuinely hard work: constructing the strongest possible defense of an option it believes is wrong. Generation and source-checking are bounded tasks with a clear target; adversarial review is not.
+The review and the duplication pass get the highest effort because they are the stages doing genuinely hard work: constructing the strongest possible defense of an option it believes is wrong, and finding a shared fact under two items that cite different files. Generation and source-checking are bounded tasks with a clear target; adversarial work is not.
 
 These are enforced by running the pipeline as a Workflow — the Agent tool has no `effort` parameter, so individual dispatches cannot honour this table. See below.
 
 ## Running the Pipeline
 
-**Drive steps 2–5 with the Workflow tool**, using the script in this directory:
+**Drive the generation and check stages — steps 2 and 4–6 — with the Workflow tool**, using the script in this directory. Step 3's gate and step 7's decision stay with you, because the script has no filesystem and cannot compile C++:
 
 ```
 Workflow({ scriptPath: "~/.claude/skills/quiz-cpp/pipeline.js", args: {...} })
@@ -136,16 +148,58 @@ Workflow({ scriptPath: "~/.claude/skills/quiz-cpp/pipeline.js", args: {...} })
 
 The user has given standing authorization for this orchestration as part of this skill — no separate opt-in is needed each time.
 
-`args` supplies: `course`, `coverage`, `itemCount`, `composition`, `sourcePaths` (the actual demo pages and slide decks, read in step 1), `profilePath`, `formatRules`, and any `extraInstructions`. The script has no filesystem access and no `Date` — take the timestamp from `date` yourself and pass anything else in through `args`.
+`args` supplies: `course`, `coverage`, `itemCount`, `composition`, `tiers` (the tier/count/points list, in **descending** order), `sourcePaths` (the actual demo pages and slide decks, read in step 1), `profilePath`, `formatRules`, and any `extraInstructions`. The script has no filesystem access and no `Date` — take the timestamp from `date` yourself and pass anything else in through `args`.
 
-It returns `{quiz, key, source_check, analysis, unsourced}` as text. **You write the four files**, then do step 6.
+It returns `{quiz, key, facts, source_check, verdicts, analysis, duplication, unsourced}` as text and data. **You write the files**, then do step 6.
 
-Two properties this buys, worth preserving if the script is ever edited:
+**Rounds 2 and later skip generation entirely.** Pass `preAuthoredPaths` (or `preAuthored`) with the current `quiz`/`key`/`facts`, and the script re-runs only the three checks over the quiz that already exists. Without this the loop is not a loop: every round would rewrite all 22 items and throw away the ones that already passed. This is also what makes the round cap affordable — measured on Quiz 1, round 1 was 950 s / 524k tokens, round 2 was 420 s / 150k.
 
-- **The two checking stages run in parallel.** They depend only on the finished quiz, so nothing is gained by ordering them.
-- **Blindness becomes structural.** Nothing reaches disk until the workflow returns, so at review time `key.md` does not exist and the key text never enters the reviewer's prompt. Do not "simplify" this by writing the files early and pointing the reviewer at a path.
+Three properties this buys, worth preserving if the script is ever edited:
 
-Falling back to three separate Agent dispatches still works, but effort then inherits the session's — say so in the final report rather than implying the review ran at high effort.
+- **The three checking stages run in parallel.** They depend only on the finished quiz, so nothing is gained by ordering them.
+- **Generation is sequential and tier-descending**, because each tier is handed the facts ledger of the tiers above it. That dependency is the point; do not "optimize" it into a `parallel()`.
+- **Blindness is structural in round 1 only.** Nothing reaches disk until the workflow returns, so at review time `key.md` does not exist. From round 2 on the files are on disk and the reviewer *could* find the key — the prompt therefore says the key exists, says not to look, and says why, rather than asserting something false. Do not restore the false claim.
+
+Falling back to separate Agent dispatches still works, but effort then inherits the session's — say so in the final report rather than implying the review ran at high effort.
+
+### Watching a round while it runs
+
+**Nothing reaches disk until the workflow returns**, because the sandbox has no filesystem — `pipeline.js` cannot write a file, and the caller writes everything from the returned values. On Quiz 2's round 1 that meant generation finished at 22:50 and the files appeared at 22:56. Two channels exist in the meantime:
+
+- **`journal.jsonl` — live, updated during the run.** One `{"type":"result",...}` line per agent, carrying its *full* return value, appended the moment that agent finishes. This is how you read the L3 items while the L1 author is still writing. Path:
+
+    ```
+    <session>/subagents/workflows/wf_<runId>/journal.jsonl
+    ```
+
+    The `runId` comes back in the Workflow tool result. `log()` lines do **not** appear here — only agent results.
+
+- **The task output file — `log()` lines, written when the run completes.** Top-level `logs` array, alongside `workflowProgress` (per-agent timing, tokens, tool calls). Path:
+
+    ```
+    /private/tmp/claude-501/<project-slug>/<session-id>/tasks/<taskId>.output
+    ```
+
+**Because `log()` is the only channel out of a running workflow, log the items themselves, not a count of them.** The tier loop emits each tier's full `quiz` text and its facts ledger as they land, so the live `/workflows` display shows the actual questions. Do not "tidy" these back into summary counts — a count tells you a stage finished, which you already knew from the progress tree.
+
+### A failed run writes nothing — say so
+
+Because the caller writes the files, a run that fails produces **no files at all**, and an empty round folder is indistinguishable from a round that never happened. Never let that pass silently: if `quiz` or `key` comes back degenerate, report the failure and state plainly that nothing was written. See `file-manifest` in the user's feedback memory — every turn ends with the list of files created or modified, including "none".
+
+### Validate the returned documents before writing anything
+
+`pipeline.js` enforces a floor (see `assertUsable` in the script), but check the content yourself too, because the schema only guarantees *a* string:
+
+- **`quiz` and `key` are real documents**, not a placeholder, a path, or a summary. A generation agent has completed the entire task — read the pack, authored ten items, compiled every stem — and then emitted the literal string `placeholder` into both fields, destroying the run. The work is not the return value; only the return value is.
+- **The item numbers you asked for are present** in `quiz`. Grep for them.
+- **No key leaked into `quiz`** — no `*` prefixes, no tier labels, no answer list.
+- **Every code stem compiles as printed.** Extract the `\begin{code}` blocks and run them through the compiler yourself. Do not accept the key's claim that it compiled them; that claim has been wrong.
+
+If any check fails, re-run rather than repair. Bust the agent cache by editing the prompt — a `resumeFromRunId` with an unchanged prompt replays the same bad result from cache.
+
+### The checking agents need somewhere to stop
+
+Handed a placeholder instead of a quiz, the key-blind reviewer refused and said why: fabricating items and then reviewing its own fabrications would produce a document that looks authoritative while carrying zero information. The source-check agent did the opposite — it searched the repo, found an *older run's* `key.md`, and verified that instead, returning a detailed and entirely off-target report about items nobody had asked about. Both dispatches should carry an explicit instruction: **if the material you were given is not a quiz, stop and say so; do not go looking for a substitute.**
 
 ## Authoring Pipeline
 
@@ -154,20 +208,43 @@ Falling back to three separate Agent dispatches still works, but effort then inh
     **A pack is never built by a subagent.** Extraction is transcription, and a model asked to transcribe into a fixed output shape will fill an empty required field with something plausible rather than leave it empty — inventing a variant label, or a path prefix that does not resolve. Both were observed. Keep this stage deterministic.
 
 1. **Read the source material first.** Open the actual assigned demo pages and slides for the modules being covered — not the module index pages, not a summary, not your memory of them. A module page's one-line demo description is a pointer, not content: an item written from *"raw memory: decay, span, the off-the-end pointer"* is invented, not sourced, and it will be the item that fails review. If a source is missing (no slide deck exists, a demo page is unwritten), **say so before generating** and note which items therefore have no source.
-2. **Dispatch one generation subagent** (`general-purpose`, `model: opus`) to author the quiz. Give it the material read in step 1. It generates roughly twice the target item count as candidates, cuts to the required number, and returns **both** `quiz.md` and `key.md` in one message, as text.
+2. **Generate exactly the target count, one agent per tier, hardest tier first.** No pool, no over-generation, no cut. Each tier agent gets the material read in step 1 and returns **`quiz`, `key` and `facts` for its own items in one message**.
 
-    That internal over-generate-and-cut is invisible: the candidates never reach disk and the cut is made by the same agent that wrote them. Acceptable for a small quiz, not for a full one — see **Batched generation and selection** below, where the pool becomes visible artifacts and the author makes the cut.
+    **Tier-descending — L3, then L2, then L1 — is the load-bearing decision.** An L3 item is a multi-step trace whose fact-set is a *superset* of several L1 facts, so writing the small items first leaves the big ones nothing to build from. Every cross-tier collision in Quiz 1's original 40-item pool ran higher-contains-lower, with no counterexample.
 
-    **One dispatch, both files.** Never split generation across two agents or two passes — two authors produce two truths, and a stem edit that doesn't propagate to the key is the classic failure. Whatever welds them must see them together.
+    **The facts ledger is what makes it work.** Each tier returns one line per item — *"shallow copy leaves two objects pointing at one block, and both destructors free it"*, not *"copy semantics"* — and every later tier is handed every line already spent, with instructions not to test any of them, nor a narrower version of one. A vague ledger line causes a duplicate item two tiers later.
 
-3. **Transcribe both files verbatim**, then check `quiz.md` yourself before going further: no `*` marks, no tier labels, no answer list, point value printed on every stem. A key that leaks into the student file invalidates every later stage.
-4. **Dispatch a source-check subagent** to produce `source_check.md`. Each item's `Source` entry in `key.md` must be a real path or URL plus the section it came from — `/demos/array_pointer/ § "the off-the-end pointer"`, not `array_pointer`. The agent reads `key.md` and opens every cited source. Like the reviewer, it cannot write files: it returns its findings as text and you transcribe them verbatim into `source_check.md`.
+    **One dispatch per tier, both files together.** Never split a tier's quiz and key across two agents or two passes — two authors produce two truths, and a stem edit that doesn't propagate to the key is the classic failure. Whatever welds them must see them together.
 
-    This agent sees the keys, so it can **never** be the key-blind reviewer — two separate dispatches, always. Run it before step 5, so an unsourced item is known before the blind review is spent on it.
+    This replaces the batch-and-cut process — see **The verification loop** below for why generating a pool and cutting it could not work.
 
-    Per item it reports: the cited source; whether that source exists; whether the cited section actually supports the item's claim — `SUPPORTED` / `PARTIAL` / `UNSUPPORTED` / `NO SOURCE`; and **any term the item depends on that the source never introduces**. That last check is the one that catches items testing vocabulary the course has not taught, which no other stage in this pipeline can see.
-5. **Dispatch a key-blind subagent** to review the quiz — `general-purpose`, `model: opus`, high effort, run synchronously. This is the stage worth the most compute. **The subagent cannot write files** — a harness rule requires subagents to return findings as text. Ask it to return the full review in its final message, then transcribe that verbatim into `analysis.md` yourself. Do not summarize it; the per-option paragraphs are the artifact.
-6. **Compare `analysis.md` against `key.md` yourself** and report, in chat, every item where the reviewer's answer differs from the key or where it judged two options defensible, together with every `UNSUPPORTED` / `NO SOURCE` item from `source_check.md`. Those are the items to rewrite. Do not silently "fix" the quiz — the disagreements are the product.
+3. **Transcribe the files verbatim**, then run the **deterministic gate before anything else**: parse `quiz.md` with `cpp_labs/quiz_parse.py` and compile every stem with the engine's own `g++ -std=c++20`. It costs about a second and it is the only check in the pipeline that cannot be wrong. Then check `quiz.md` yourself: no `*` marks, no tier labels, no answer list, point value printed on every stem. A key that leaks into the student file invalidates every later stage.
+
+    A stem that does not compile is a blocking finding **unless non-compilation is the item's key** — Quiz 1's item 5 is keyed to "rejected at compile time", and the gate must not be allowed to regenerate it.
+
+4. **Source check** → `source_check.md` **and `verdicts.json`**. Each item's `Source` entry in `key.md` must be a real path or URL plus the section it came from — `cpp_labs/array_pointer/topics/ptr_decay.topic.yaml § "the off-the-end pointer"`, not `array_pointer`. The agent reads `key.md` and opens every cited source.
+
+    This agent sees the keys, so it can **never** be the key-blind reviewer — separate dispatches, always.
+
+    Per item it reports: the cited source; whether that source exists; whether the cited material supports the item — `SUPPORTED` / `PARTIAL` / `UNSUPPORTED` / `NO SOURCE`; whether the key rests on a recorded observation rather than a rule (`platform_dependent`); and **any term the item depends on that no source in the corpus introduces**. That last check catches items testing vocabulary the course has not taught, which no other stage can see.
+
+    **The criterion is "are the premises taught?", never "is the conclusion stated?"** The quiz tests deduction, so an L2 or L3 item is properly grounded when the corpus teaches every fact the student must *combine* — the combination itself appearing nowhere is the exercise, not a gap. Run the other way and the rule bites harder: **for an L3 item, a key stated verbatim in the corpus is a defect** — a recall item priced at three points.
+
+    This distinction is what separates two findings that look identical. Quiz 2's item 5 was correctly killed: its key needed *name hiding*, a concept absent from the whole corpus, so no chain of taught reasoning reached the answer — the student could not even read the question properly. Item 3 was flagged three rounds running and correctly kept: it needs `tpl_special`'s "pointers take the partial" plus `tpl_deduce`'s argument deduction, both taught, composed into a conclusion stated nowhere. **An untaught premise or an untaught word blocks; an underived conclusion is the point of the item.**
+
+    When a `PARTIAL` turns out to be this — a derived step the checker wanted verbatim — the fix is usually to widen the `Source` cell to name every topic the derivation draws on, and to make the key's rationale argue the student's route rather than the instructor's. Quiz 2's item 3 needed exactly that: cite `tpl_deduce` alongside `tpl_special`, and refute the `const char*` distractor with the source's own "any pointer" wording instead of const-absorption mechanics the student never needs.
+
+    **Verdicts are data, not prose.** The agent returns a `verdicts` array alongside its report, one entry per item, and the flagged set is a *filter over that array* — never something read out of the report's tables. This exists because reading failed: four flagged items were reported as two, from skimming one column of a 22-row table while the totals line two screens below said otherwise. **When a number matters, parse it — do not read it.** An item flagged in the prose but absent from the array is silently kept, so the array is what the loop obeys.
+
+5. **Key-blind review** → `analysis.md`, at high effort. This is the stage worth the most compute. Its report ends with a seven-column table — `Q | Answer | Confidence | AMBIGUOUS | weak_count | expected_pass | trap_quality` — read by script, so a cell containing prose breaks it. Transcribe the review verbatim; do not summarize it, the per-option paragraphs are the artifact.
+
+6. **Duplication** → `duplication.json`, at high effort, in parallel with the other two. **This agent sees every question AND every key at once** — the one stage in the pipeline with a whole-quiz view. It must, because a collision is usually invisible from the stems: two items can cite different files while one item's key rests on the other item's exact fact. It reports item *pairs* with a confidence and a `same_fact` flag, and where the two are in different tiers, which contains which.
+
+    This is what the old cross-batch selection sheet was for, and it does the job better: a batch reviewer could never see past its own ten items.
+
+7. **Decide the round.** Collect the blocking set: gate failures, `UNSUPPORTED` / `NO SOURCE` verdicts, `platform_dependent` items, untaught terms, reviewer/key disagreements, `AMBIGUOUS` flags, and duplicate pairs above the confidence bar. If it is empty, the loop has converged. Otherwise regenerate **only those items** and start the next round — see **The verification loop** below.
+
+    Report the blocking set in chat every round, and end with the **file manifest** — every file created or modified, by full path, and the words "no files created or modified" when a round produced none.
 
 An item with no source is not automatically wrong, but it is unscoped: nothing guarantees the student was taught it, or taught it in the vocabulary the item uses.
 
@@ -175,36 +252,210 @@ The check that matters is not "is the key right?" but **"can a strong student de
 
 ### The key-blind rule
 
-**The subagent must see `quiz.md` and nothing else.** Not `key.md`, not the candidate pool, not your reasoning, not which items you already suspect. A reviewer who has seen the key cannot tell you whether the key is findable — it will rationalize toward the answer it was given. If the subagent is contaminated, the review is worthless and must be re-run from a fresh agent.
+**The subagent must see `quiz.md` and nothing else.** Not `key.md`, not the facts ledger, not your reasoning, not which items you already suspect. A reviewer who has seen the key cannot tell you whether the key is findable — it will rationalize toward the answer it was given. If the subagent is contaminated, the review is worthless and must be re-run from a fresh agent.
+
+**Never tell the reviewer the key does not exist.** In round 1 it happens to be true — nothing has reached disk — but from round 2 on the files are there and the claim is a lie the reviewer can discover. Say the key exists, say not to look, and say why. Structural blindness is an unavoidable casualty of iterating; covering it up with a false assertion is not.
 
 Dispatch prompt, in substance:
 
-> Read `<path>/quiz.md` and nothing else — a file named `key.md` sits next to it, and opening it invalidates the review. You are answering this quiz cold; no answer key exists for you. Return your full review as your final message. For **every question**, give: your chosen answer and confidence; then **one paragraph per option** — a–e, including your own choice — stating the strongest case a well-prepared student could make for it and why it is finally right or wrong; the specific misconception each wrong option would catch, or `WEAK` if it would catch nobody; a difficulty estimate; and a flag `AMBIGUOUS` if two or more options are genuinely defensible, naming them. Do not skip options you consider obviously wrong — say why they are obviously wrong. Judge only from the printed item; do not consult outside sources for what the instructor "probably meant".
+> Read `<path>/quiz.md` and nothing else. An answer key for this quiz **does** exist on disk, and so does the source material — do not go looking for either. Opening them invalidates this review completely, because the one question worth answering here is whether the key is findable from the item alone, and a reviewer who has seen the key cannot tell you that. If you find yourself wanting to check something, that wanting is the signal the item may be ambiguous: write that down instead. Return your full review as your final message. For **every question**, give: your chosen answer and confidence; then **one paragraph per option** — a–e, including your own choice — stating the strongest case a well-prepared student could make for it and why it is finally right or wrong; the specific misconception each wrong option would catch, or `WEAK` if it would catch nobody; a difficulty estimate; and a flag `AMBIGUOUS` if two or more options are genuinely defensible, naming them. Do not skip options you consider obviously wrong — say why they are obviously wrong. End with the seven-column summary table, which is read by a script.
 
-## Batched generation and selection
+## The verification loop
 
-**One agent writing more than ~10 items drifts and repeats.** Above that count, generate in **batches of ~10**, each a complete pipeline run (steps 0–6) into its own run folder, each authored from the same pack and blind to the others. Number items continuously across batches — 1–10, 11–20, 21–30 — so an item keeps one identity from generation through to the final paper.
+**The quiz is converged on, not selected from.** Round 1 generates exactly the target count and checks it. Every round after that regenerates only the items that failed and re-runs the checks over the whole quiz. The loop ends when a round finds nothing blocking.
 
-Size the pool at roughly **1.4× the target**: enough that a defective item can be dropped rather than repaired, not so much that whole batches are wasted. Three batches of 10 for a 22-item quiz is the worked case.
+This replaces batch-and-cut, and the reason is arithmetic rather than taste. Quiz 1's 40-item pool at 1.4× produced 16 L1 candidates for 14 slots with only 11 clean — **no defect-free selection from that pool existed**, so the process could not have succeeded no matter how carefully the author cut. Regeneration is not subject to that failure: a flagged item comes with a *stated reason*, which is a repair instruction, where a pool offers only alternatives that were never told what was wrong with the one they replace.
 
-Batching moves work that a single run does invisibly out into the open, and adds three stages:
+### One round
 
-7. **Build the selection sheet** — `final_analysis_<timestamp>/selection.md`. This is the first time anything compares the batches against each other; no reviewer in any run could see across that boundary. Read every `quiz.md`, every `key.md`, and the verdict lines of every `source_check.md`, then write:
+1. **Regenerate only the flagged items** — `regen.js` in this directory, driven the same way as `pipeline.js`:
 
-    - **One table per tier**, every item as a row: number, points, module, source demo and topic, a one-line summary of what it asks, agentic yes/no, and flags.
-    - **The tier arithmetic** — pool count, slots, cuts required, per tier. State which tier binds; it is usually the highest one, where the pool is thinnest and the flags concentrate.
-    - **Overlap clusters**, ordered by how strongly they collide. Two items from the same topic file testing one principle from both sides is the common case, and neither batch's reviewer could have caught it. Say what choosing one over the other costs.
-    - **Coverage** — items per demo and per module across the whole pool. Name any demo represented by a single item, since cutting it drops that demo from the quiz.
-    - **Defects** — items that do not compile as printed, `PARTIAL`/`UNSUPPORTED` source-check verdicts, and any item amended by hand after its batch review.
-    - **A worksheet** — the item numbers listed by tier, for the author to strike through, plus the agentic numbers for the ~30% count.
+    ```
+    Workflow({ scriptPath: "~/.claude/skills/quiz-cpp/regen.js", args: {...} })
+    ```
 
-    Summarize nothing away. Flags are reported per item; the sheet is a comparison instrument, not a recommendation.
+    One agent per affected tier, **tier-descending like generation**, each told which item numbers it is replacing, the verbatim finding for each, and the facts ledger of the items it is *not* replacing — which it must still avoid. It reads the current `quiz.md` from disk so it can see what the survivors ask. Everything not named is carried forward byte-identically.
 
-8. **The author selects.** Not an agent, and not you. Present the sheet and stop. If a tier comes up short after the cuts, the author names the tier and its demos, and you run **one more batch of that tier only** — which returns to step 7 for the new items.
+    **Give the agent the finding, not a verdict.** "AMBIGUOUS — options b and c are both true of the printed code; write a replacement whose key is the only true statement in its field" repairs; "item 2 failed review" does not. This is the whole reason regeneration beats selecting from a pool.
 
-9. **Merge, then review once more.** Renumber the survivors 1–N, rebalance the key letters (each batch was internally balanced, so a subset will not be), carry a provenance column in the merged `key.md` giving each item's run folder and original number, and run **one fresh key-blind review over the merged paper**. That final review is also what covers any item amended by hand after its batch review — the state the pipeline otherwise exists to prevent.
+    When two items are replaced *because they duplicated each other*, tell the higher tier which fact is now spent and unavailable — otherwise both replacements reach for it again and the collision survives the repair.
+2. **Splice, then re-check — scoped by what each check actually depends on.** Pass `changedItems` to `pipeline.js`. The three checks are not alike and must not be scoped alike:
 
-**An item edited after its review is unreviewed.** This is the rule the whole structure protects. Amendments made in response to a source check are edits like any other: they do not go back into the run folder, they go into the merge, and the merged review is what clears them.
+    | check | scope on a repair round | why |
+    |---|---|---|
+    | source check | **changed items only** | item-local: it opens *that item's* cited source. Nothing about item 12 changes item 7's verdict. |
+    | key-blind review | **changed items only** | item-local: it answers each item cold from the printed item alone. |
+    | duplication | **reads everything, reports pairs with ≥1 changed item** | pairwise — see below. |
+
+    **Never scope the duplication pass to the changed items alone.** It is the one check whose subject is a *relation*, and on Quiz 2 both round-2 replacements collided with items that had **not** changed that round — 8↔22 at 0.65 and 19↔21 at 0.70. A changed-only pass sees neither. Narrowing what it *reports* is safe and strictly good: pairs of two untouched items were judged in an earlier round, and re-scoring them is where the noise came from.
+
+    **Scope what the agents WRITE, never what they READ.** Every check still receives the whole quiz. The reviewer in particular must keep every question in context, because `AMBIGUOUS` is a whole-quiz judgement wearing an item-level label — it asks whether a student could defend a second option, and what a student can defend depends on what else the quiz asks. A replacement is exactly where new cross-item priming enters: rewrite item 5 to be about undefined behaviour, and an untouched item 12 whose throwaway distractor reads "the behaviour is undefined" can become genuinely defensible. Item 12 did not change; the questions around it did.
+
+    **The round's artifacts stay complete: 22 items in `analysis.md`, 22 in `source_check.md`, 22 in `verdicts.json`.** Seed each from the previous round's file and replace only the changed items' sections. What shrinks is generation, not the artifact. **Assert the merged count equals the item count** before computing anything from it — a scoped round returns two entries, and treating that as the whole picture drops twenty items and manufactures a convergence the loop has not earned.
+
+    **Measured stability, Quiz 2, three independent runs over 15 never-changed items:** answer column **0/15** flips, and no unchanged item was ever newly flagged `AMBIGUOUS`. The soft columns are not stable — `expected_pass` drifted on 14/15 (one item ran 0.65 → 0.85 → 0.75), confidence on 2, `trap_quality` on several. So the blocking inputs are safe to carry forward and the advisory ones should be read as estimates, not measurements, whether or not they were re-run.
+
+    Why it matters: output is ~29% of the bill, and on a repair round the checkers' per-option reports over untouched items are most of it. Round 3 of Quiz 2 rewrote 2 items and still paid for a full 22-item review and source check.
+
+    **A replacement routinely collides with a survivor, and this is not a rare case.** On Quiz 2's round 2, both duplicate-driven replacements landed on top of *different* untouched items — at 0.70 and 0.65, higher than the 0.60 and 0.50 collisions they were written to fix. The regenerating agent had been told explicitly which facts those survivors held, and reached for the neighbouring fact anyway. Naming the spent facts helps; it does not substitute for re-checking. This is the single strongest argument for whole-quiz checks and the reason a round is not finished when the regeneration returns.
+3. **Snapshot.** Write `rounds/round-K/` with the round's four documents plus `facts.txt`, `verdicts.json`, `duplication.json`, and `replacements.json` recording which items changed and why. Refresh the top-level copies. Never edit an earlier round.
+
+4. **Update `loop_state.json` before deciding anything.** Record the round's results, then evaluate each termination rule *in the file* — converged, no progress, per-item exhaustion, oscillation, budget, cap — with a verdict for each and the resulting decision. Deciding first and writing it down afterwards is how a rule gets skipped: the same reason verdicts are parsed rather than read.
+
+### What blocks, and what does not
+
+| Finding | Blocks? |
+|---|---|
+| Stem does not compile, and non-compilation is not the key | **yes** |
+| `UNSUPPORTED` / `NO SOURCE` | **yes** |
+| `platform_dependent` — key rests on a recorded observation | **yes** |
+| Untaught term the item depends on | **yes** |
+| Reviewer's answer differs from the key | **yes** |
+| `AMBIGUOUS` — two options genuinely defensible | **yes** |
+| Duplicate pair with `same_fact: true` at high confidence | **yes**, once — but see the stability rule below |
+| `PARTIAL` | **no** — advisory |
+
+**`PARTIAL` is non-blocking, deliberately.** In every observed case the key was sound and only the citation overreached — invisible to a student, and fixed by editing `key.md`, not by regenerating a good item. Regenerating over a citation gap is how the loop destroys its own best work. This is the assumption most worth revisiting: if a `PARTIAL` ever means the *key itself* is unsupported, promote it.
+
+**A cross-tier duplicate replaces the cheaper item.** A three-point trace over several objects swallows a one-point recall item, so the L1 item is the one to rewrite — replacing the L3 item throws away the more expensive artifact to fix a collision the cheap one caused.
+
+### The duplication check is noisy — use the unchanged pairs as a control
+
+**Its confidence has run-to-run variance comparable to its own decision boundary, and you can measure this for free.** Every round re-scores pairs whose items did not change; those pairs are a built-in control group. If an unchanged pair drifts across the `same_fact` line between rounds, the signal is noise at that threshold and must not be treated as blocking.
+
+Measured on Quiz 2: pair (1, 9) scored **0.40 → 0.50 → 0.55** across three rounds with **neither item ever regenerated** — identical input, verdict crossing `same_fact: true` on the third roll. Pair (7, 17) appeared at 0.20 and then vanished, also unchanged. Meanwhile chasing the flagged pairs went 0.60 → 0.70 → 0.60: each repair produced a fresh collision of comparable size, because ~9–15 pairs are re-rolled every round.
+
+The rule that follows:
+
+- **Compare each round's duplication output against the previous round's**, pair by pair, and mark which pairs contain an item that actually changed.
+- **A pair flagged in exactly one round, on unchanged items, is noise.** Do not regenerate for it.
+- **A pair is worth acting on when it is newly created by a replacement** — a real consequence of this round's edit — or when it holds across rounds.
+- **When only noise-grade pairs remain, the loop has converged for practical purposes.** Take the oscillation exit and escalate what is left; do not spend items against a re-rolling signal.
+
+This does not make the duplication pass worthless — it caught the genuine 2↔8 and 19↔21 collisions, and it is still the only stage with a whole-quiz view. It means its *threshold* is soft where the other checks' are hard. The gate, the source verdicts and the reviewer's answer column are deterministic or near-deterministic; this one is a judgement re-made each run.
+
+### The loop runs to termination without asking
+
+**Never stop between rounds to ask whether to run the next one.** The termination rules below are what make that permission unnecessary — a loop with a written stopping condition does not need one. Report each round's findings as they land and then start the next round **in the same turn**; reporting is not pausing.
+
+Stop only on a condition the rules name: converged, no progress, per-item exhaustion, oscillation, budget, or the hard cap of 5. The single question that *is* the author's — and the only one worth interrupting for — is whether the finished quiz ships.
+
+If you catch yourself wanting to ask "shall I run round 2?", the answer is in **Loop termination** below. If a loop ever genuinely lacks a stopping rule, that is a bug in the loop; write the rule rather than substituting a prompt for it.
+
+### The author reviews; the author no longer cuts
+
+The loop hands over a complete quiz, not a sheet. **Present it when it terminates** — whether it ships is the author's call, and nothing downstream may assume it. Report, per item, anything the loop chose not to act on: surviving `PARTIAL`s, duplicate pairs left standing, and any item that escalated after exhausting its attempts. Those are judgement calls being deferred, and they must be visible as such rather than buried in a round folder.
+
+**An item edited after its review is unreviewed.** This is the rule the whole structure protects, and the loop satisfies it by construction: every round re-checks the entire quiz, so a spliced item is always cleared by a review that saw it. A hand edit made *after* the final round is outside that guarantee — it needs another round, not a note.
+
+## Loop termination — cost-shaped, with a hard backstop
+
+The loop stops when it stops *finding* things, not when it hits a count. But a
+cost-shaped rule must never be the only exit, because every one of them depends
+on a model's output and a model can always produce one more finding.
+
+**The termination guarantee.** The loop counter increments unconditionally at the
+top of every iteration and is never reset, decremented, or skipped on any path,
+including error paths and retries. The loop condition includes `round < 5`. That
+alone bounds the loop at five iterations regardless of what any agent returns.
+Every other rule below can only end it *sooner*.
+
+Write it so the bound is visible in one place:
+
+```
+for (let round = 1; round <= MAX_ROUNDS; round++) {   // MAX_ROUNDS = 5, constant
+    ...                                              // nothing here touches `round`
+}
+```
+
+Do not express the bound as `while (!converged)` with a counter incremented
+inside, and never `continue` past the increment. Those are the two shapes that
+turn a capped loop into an unbounded one.
+
+**Early exits, in the order they fire:**
+
+1. **Converged** — no blocking finding, and no regeneration still awaiting its
+   acceptance score. The normal ending.
+2. **No progress** — this round's blocking set is a subset of last round's, with
+   nothing newly fixed. The loop is re-reporting what it could not repair;
+   another round buys nothing.
+3. **Per-item exhaustion** — an item has been regenerated twice. It stops being
+   regenerated and escalates on its own, while the other items carry on. Track
+   this per item, not globally.
+4. **Oscillation** — an item alternates between a constraint failure and a vigor
+   rejection, or fails the same check class twice with different content. Escalate
+   immediately rather than spending the cap on it.
+5. **Budget** — a token or wall-clock ceiling, if one was set.
+
+**Round cost is not flat, so a count is a poor budget — but do not overstate the
+saving.** There are two shapes of later round and they cost very differently:
+
+- **A checks-only round** — nothing was regenerated, the quiz is re-verified as
+  it stands. 3 agents.
+- **A repair round** — the normal case, and the expensive one. Regeneration
+  runs *and then* all three checks run again, because **checking is priced by
+  the whole quiz, not by the number of items that changed.**
+
+Quiz 2, measured from the per-turn `usage` records in the agent transcripts
+(16 subagents, 186 turns total):
+
+| round | agents | wall | output tokens | cumulative context |
+|---|---:|---:|---:|---:|
+| 1 — generate + check | 6 | 850 s | 89,173 | 3,997,822 |
+| 2 — repair (5 items) | 6 | 937 s | 103,455 | 3,191,993 |
+| 3 — repair (2 items) | 4 | 686 s | 86,257 | 2,602,549 |
+
+A repair round lands near **80–100% of round 1's wall clock**. What makes a cap
+of 5 affordable is that later rounds repair progressively fewer *items* — not
+that a later round is individually cheap.
+
+**Three different numbers get called "tokens". Say which one you mean.**
+Measured across Quiz 2's 16 agents and 186 turns:
+
+| number | Quiz 2 | what it is |
+|---|---:|---|
+| output | 278,885 | tokens generated — items, keys, reports |
+| peak context, summed per agent | 1,031,467 | distinct material the fleet held |
+| total prefill | 9,792,364 | summed over turns; re-sends counted each time |
+
+The **workflow tool's `tokens` field is the middle one** — each agent's
+high-water-mark context (`input + cache_creation + cache_read`), summed,
+output excluded. Verified to within 6–20 tokens per run against the per-turn
+`usage` records in the agent transcripts. It is *not* output and *not* prefill.
+
+**Prefill was 9.5× peak — but do not read that as the cost.** A context is
+re-sent in full every turn, so prefill grows with turn count; almost all of it
+is cache *reads*, billed at a tenth. Weighting each component by its rate
+(cache read ×0.1, cache write ×1.25, output ×5 against base input) gives a very
+different ranking:
+
+| | tokens | share of prefill | share of cost |
+|---|---:|---:|---:|
+| cache write | 2,128,587 | 21.7% | **55.2%** |
+| cache read | 7,663,405 | **78.3%** | 15.9% |
+| output | 278,885 | — | 28.9% |
+
+Caching cut the input side by **2.9×**, not 10× — the discount only reaches the
+portion that was read, and the writes that made those reads possible are the
+single largest line.
+
+**So the lever is cache-write volume, not pack size and not turn count.** The
+fleet wrote 2.1M against 1.03M of distinct material: every agent whose context
+*grows* — a tool call appending file contents, then another — forces a fresh
+cache segment. An agent that loads a big prefix once and then reasons over it
+is cheap no matter how many turns it takes; an agent that keeps pulling new
+material in is not.
+
+Practical consequences: prefer a check that answers from the pack it was given
+over one that goes hunting through the repository file by file (the round-3
+source check made 21 tool calls, each appending). And do not dismiss output as
+negligible because it is 2.85% of prefill — at ×5 it is 29% of the bill, and
+the checking agents' long per-option reports are most of it.
+
+**Escalation is an ending, not a failure.** A loop that stops and says "item 14
+failed twice, here are both versions and what each costs" has done its job. One
+that keeps grinding until something passes has only learned to satisfy the
+checker.
 
 ## Common Mistakes
 
@@ -212,15 +463,39 @@ Batching moves work that a single run does invisibly out into the open, and adds
 |---|---|
 | Generating before reading the course profile | Profile first; its spec overrides these defaults |
 | Giving the review subagent the key, or "just a hint" | Key-blind means blind; re-run from a fresh agent if contaminated |
-| Emitting the quiz only in chat | Always write the three files to the quiz folder |
+| Emitting the quiz only in chat | Always write the round's files to the build folder |
 | Inventing the folder timestamp | Take it from `date` |
-| Editing flagged items without telling the user | Report every disagreement; the author decides |
-| Cutting the pool down to 22 yourself | The author selects; you build the sheet and stop |
-| Amending an item after its review and shipping it | The amendment is unreviewed until the merged review clears it |
-| One agent asked for 22 items in one pass | Batches of ~10, numbered continuously, pool at ~1.4× |
-| Writing a run folder's items straight into the final paper | Run folders are inputs; the paper is built in `final_analysis_<ts>/` |
+| Editing flagged items without telling the user | Report every disagreement; the author decides what ships |
+| Amending an item after the final round and shipping it | The amendment is unreviewed; run another round, do not add a note |
+| One agent asked for all 22 items in one pass | One agent per tier, L3 → L2 → L1, each handed the facts ledger |
+| Generating a 1.4× pool and cutting it | Retired. Generate exactly N and repair what fails — a pool cannot be told what was wrong |
+| Regenerating the whole quiz when four items failed | Regenerate only the flagged items; splice, then re-check all N |
+| Scoping the duplication pass to the changed items | It reads everything and reports pairs with ≥1 changed item. Scoping it to the new items misses the collisions replacements actually cause |
+| Re-reviewing all 22 items on a repair round | Source check and blind review are item-local — pass `changedItems` and carry the rest forward |
+| Using a scoped round's `verdicts` as the whole picture | Merge onto the previous round's before computing the blocking set; assert the merged count equals the item count |
+| Writing a scoped round's `analysis.md` with only the changed items in it | Seed from the previous round's file and replace those sections. The artifact is always all N items |
+| Scoping what an agent READS rather than what it writes | Every check sees the whole quiz; only the reporting narrows. `AMBIGUOUS` depends on the rest of the quiz |
+| Treating `expected_pass` or `trap_quality` as measurements | They drifted on 14/15 unchanged items across three runs. Estimates. Only the answer column and `AMBIGUOUS` block |
+| Regenerating a good item over a `PARTIAL` citation | `PARTIAL` is advisory; fix the citation in `key.md` |
+| Replacing the L3 item of a cross-tier duplicate pair | Replace the cheaper item; the trace swallows the recall item, not the reverse |
+| Reading the flagged set out of `source_check.md`'s tables | Filter `verdicts.json`. When a number matters, parse it — do not read it |
+| Overwriting a round folder | Rounds are the trace; a later round writes a new folder |
+| Telling the reviewer "no answer key exists" | True in round 1 only. Say it exists, say not to look, say why |
 | Asking for the topic when it was already given | Generate; ask only for genuinely missing inputs |
 | Four choices by default | Five, unless specified |
 | Marking the key with bold, `(correct)`, or an answer list at the end | Only the `*` prefix, inline |
 | `\begin{code}` around plain prose | Code only |
 | Answer key positionally biased toward `c)` | Distribute keys across all letters |
+| Writing the returned `quiz`/`key` to disk unchecked | Validate first: real documents, right item numbers, no key leak, every stem compiles |
+| Trusting `key.md`'s claim that the stems compile | Extract the code blocks and compile them yourself |
+| Resuming a failed run with the prompt unchanged | Cached agents replay the same bad result; edit the prompt to bust the cache |
+| A checking agent hunting for a substitute when handed no quiz | Tell both checkers to stop and report, never to go find another target |
+| Reporting a failed round without saying no files were written | An empty round folder is invisible; state the manifest, including "none" |
+| Asking "shall I run round 2?" | The termination rule is the permission. Report the round, start the next one in the same turn |
+| Reporting loop state from memory instead of a file | `loop_state.json` at the build root, updated every round. A resumed session must not have to re-derive the round number or the attempt counts |
+| Leaving a mid-flight round folder looking like a failed one | Drop a `STATUS.txt` saying which artifacts are pending and that the round is incomplete, not failed |
+| Acting on an agent's flag without checking it | Three of five untaught-term flags on Quiz 2 were false — the checker sees only the *cited* topic, not the corpus. Grep the pack before spending a regeneration |
+| Reading `PARTIAL` as "the item is ungrounded" | Ask whether the *premises* are taught. A derived conclusion stated nowhere is what an L2/L3 item is for |
+| An L3 item whose key is verbatim in the corpus | That is a recall item at three points. Raise the derivation, don't celebrate the citation |
+| Re-running generation on round 2 | Pass `preAuthoredPaths`; rounds 2+ re-check the quiz that already exists |
+| Regenerating the item whose key *is* "rejected at compile time" | The gate must exempt items keyed to non-compilation |

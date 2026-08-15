@@ -22,7 +22,7 @@ Modern C++: classes, functions, pointers and memory, concurrency, data structure
 
 Generate the tiers in the stated proportion and **label each item's tier** in the instructor key, since the weights depend on it.
 
-**Print the point value on the student paper** — `1. (3 points) …` — and state the total and the full-credit threshold in the header. Students need the weights to budget 15 minutes rationally, and printing them is safe *because* the allowance is point-based: skipping an L3 item consumes the entire grace, so the weights create no skip-the-hard-ones strategy. **Never print the tier label** (`L1`/`L2`/`L3`) on the student version — it adds nothing the point value doesn't and invites "L3 = skip it". Tier labels stay in `key.md`.
+**Print the point value on the student version** — `1. (3 points) …` — and state the total and the full-credit threshold in the header. Students need the weights to budget 15 minutes rationally, and printing them is safe *because* the allowance is point-based: skipping an L3 item consumes the entire grace, so the weights create no skip-the-hard-ones strategy. **Never print the tier label** (`L1`/`L2`/`L3`) on the student version — it adds nothing the point value doesn't and invites "L3 = skip it". Tier labels stay in `key.md`.
 
 ## Difficulty: err hard
 
@@ -107,12 +107,14 @@ In the **parent `cpp_demos` repo**, alongside `course_analysis/` and `handoffs/`
 ```
 cpp_demos/quizzes/
     quiz-1/  quiz-2/  quiz-3/  quiz-4/     # matching the coverage table below
-        quiz_<N>_<YYYY-MM-DD_HHhMMmEST>/   # one per pipeline run
-        final_analysis_<YYYY-MM-DD_HHhMMmEST>/
+        build_<YYYY-MM-DD_HHhMMmEST>/      # one per verification loop
+            rounds/round-1/  round-2/  …   # the trace; immutable once written
     source_packs/                          # shared across all four quizzes
 ```
 
-All four quiz folders exist from the start, so a run never has to decide where to put itself. See `SKILL.md` for what goes in a run folder and in `final_analysis_`.
+All four quiz folders exist from the start, so a build never has to decide where to put itself. See `SKILL.md` for what goes in a build folder and in each round.
+
+Folders named `quiz_<N>_<ts>/` or `final_analysis_<ts>/` are from the **retired** batch-and-cut process. Quiz 1 has several, plus the author's own hand-cut notes. They are history: read them if you need provenance, never write into them, and never treat them as inputs to a new build.
 
 **Never under `course_site/`.** That repo is a deployed Hugo site: anything placed in `content/` or `static/` is published, and publishing `key.md` hands students the answers. The two repos are separate git repos and must never be staged across.
 
