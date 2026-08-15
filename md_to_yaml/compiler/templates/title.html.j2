@@ -1,0 +1,6 @@
+<header class="slide-heading-stack slide-heading-stack--title">
+  <h1 id="slide-{{ loop.index }}-heading">{{ rendered_title | safe }}</h1>
+  {% if rendered_subtitle %}<p class="slide-subtitle">{{ rendered_subtitle | safe }}</p>{% endif %}
+</header>
+{% if rendered_author_line %}<p class="author">{{ rendered_author_line | safe }}</p>{% elif slide.author %}<p class="author">{{ slide.author | e }}</p>{% endif %}
+{% if slide.notes %}<aside class="slide-notes" hidden aria-hidden="true">{{ slide.notes | e }}</aside>{% endif %}

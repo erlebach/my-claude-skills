@@ -1,0 +1,52 @@
+{% include 'slide_heading_h2.html.j2' %}
+<div class="slide-content-area">
+<div class="table-scroll-wrapper" tabindex="0" role="region" aria-label="{% if slide.caption %}{{ slide.caption | e }}{% else %}Data table{% endif %}">
+  <table>
+    {% if slide.caption %}
+    <caption class="table-caption">
+      {% if rendered_table_caption %}{{ rendered_table_caption | safe }}{% else %}{{ slide.caption | e }}{% endif %}
+    </caption>
+    {% endif %}
+    {% if slide.headers %}
+    <thead>
+      <tr>
+        {% if rendered_table_headers %}
+          {% for h in rendered_table_headers %}<th scope="col">{{ h | safe }}</th>{% endfor %}
+        {% else %}
+          {% for h in slide.headers %}<th scope="col">{{ h | e }}</th>{% endfor %}
+        {% endif %}
+      </tr>
+    </thead>
+    {% endif %}
+    <tbody>
+      {% if rendered_table_rows %}
+      {% for row_cells in rendered_table_rows %}
+      {% set is_span_row = row_cells | selectattr("colspan", "gt", 1) | list | length > 0 %}
+      <tr{% if is_span_row %} class="span-row"{% endif %}>
+        {% for cell in row_cells %}
+          {% if loop.first and slide.row_headers and cell.colspan == 1 %}
+            <th scope="row">{{ cell.html | safe }}</th>
+          {% else %}
+            <td{% if cell.colspan > 1 %} colspan="{{ cell.colspan }}"{% endif %}>{{ cell.html | safe }}</td>
+          {% endif %}
+        {% endfor %}
+      </tr>
+      {% endfor %}
+      {% else %}
+      {% for row in slide.rows %}
+      <tr>
+        {% for cell in row %}
+          {% if loop.first and slide.row_headers %}
+            <th scope="row">{{ cell | e }}</th>
+          {% else %}
+            <td>{{ cell | e }}</td>
+          {% endif %}
+        {% endfor %}
+      </tr>
+      {% endfor %}
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+</div>
+{% if slide.notes %}<aside class="slide-notes" hidden aria-hidden="true">{{ slide.notes | e }}</aside>{% endif %}

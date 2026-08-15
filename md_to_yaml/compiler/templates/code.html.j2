@@ -1,0 +1,12 @@
+{% include 'slide_heading_h2.html.j2' %}
+<div class="slide-content-area">
+<div style="position: relative;">
+  <span class="code-language-label">{{ slide.language | e }}</span>
+  {% if rendered_code %}
+    {{ rendered_code | safe }}
+  {% else %}
+    <pre tabindex="0" role="region" aria-label="{{ slide.language | e }} code"><code class="language-{{ slide.language | e }}">{% if slide.body %}{{ slide.body | e }}{% endif %}</code></pre>
+  {% endif %}
+</div>
+</div>
+{% if slide.notes %}<aside class="slide-notes" hidden aria-hidden="true">{{ slide.notes | e }}</aside>{% endif %}

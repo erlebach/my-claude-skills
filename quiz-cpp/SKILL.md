@@ -254,7 +254,7 @@ The check that matters is not "is the key right?" but **"can a strong student de
 
 **The subagent must see `quiz.md` and nothing else.** Not `key.md`, not the facts ledger, not your reasoning, not which items you already suspect. A reviewer who has seen the key cannot tell you whether the key is findable — it will rationalize toward the answer it was given. If the subagent is contaminated, the review is worthless and must be re-run from a fresh agent.
 
-**Never tell the reviewer the key does not exist.** In round 1 it happens to be true — nothing has reached disk — but from round 2 on the files are there and the claim is a lie the reviewer can discover. Say the key exists, say not to look, and say why. Structural blindness is an unavoidable casualty of iterating; papering over it with a false assertion is not.
+**Never tell the reviewer the key does not exist.** In round 1 it happens to be true — nothing has reached disk — but from round 2 on the files are there and the claim is a lie the reviewer can discover. Say the key exists, say not to look, and say why. Structural blindness is an unavoidable casualty of iterating; covering it up with a false assertion is not.
 
 Dispatch prompt, in substance:
 
@@ -289,7 +289,7 @@ This replaces batch-and-cut, and the reason is arithmetic rather than taste. Qui
 
     **Never scope the duplication pass to the changed items alone.** It is the one check whose subject is a *relation*, and on Quiz 2 both round-2 replacements collided with items that had **not** changed that round — 8↔22 at 0.65 and 19↔21 at 0.70. A changed-only pass sees neither. Narrowing what it *reports* is safe and strictly good: pairs of two untouched items were judged in an earlier round, and re-scoring them is where the noise came from.
 
-    **Scope what the agents WRITE, never what they READ.** Every check still receives the whole quiz. The reviewer in particular must keep the full paper in context, because `AMBIGUOUS` is a paper-level judgement wearing an item-level label — it asks whether a student could defend a second option, and what a student can defend depends on what else is on the paper. A replacement is exactly where new cross-item priming enters: rewrite item 5 to be about undefined behaviour, and an untouched item 12 whose throwaway distractor reads "the behaviour is undefined" can become genuinely defensible. Item 12 did not change; the paper around it did.
+    **Scope what the agents WRITE, never what they READ.** Every check still receives the whole quiz. The reviewer in particular must keep every question in context, because `AMBIGUOUS` is a whole-quiz judgement wearing an item-level label — it asks whether a student could defend a second option, and what a student can defend depends on what else the quiz asks. A replacement is exactly where new cross-item priming enters: rewrite item 5 to be about undefined behaviour, and an untouched item 12 whose throwaway distractor reads "the behaviour is undefined" can become genuinely defensible. Item 12 did not change; the questions around it did.
 
     **The round's artifacts stay complete: 22 items in `analysis.md`, 22 in `source_check.md`, 22 in `verdicts.json`.** Seed each from the previous round's file and replace only the changed items' sections. What shrinks is generation, not the artifact. **Assert the merged count equals the item count** before computing anything from it — a scoped round returns two entries, and treating that as the whole picture drops twenty items and manufactures a convergence the loop has not earned.
 
@@ -474,7 +474,7 @@ checker.
 | Re-reviewing all 22 items on a repair round | Source check and blind review are item-local — pass `changedItems` and carry the rest forward |
 | Using a scoped round's `verdicts` as the whole picture | Merge onto the previous round's before computing the blocking set; assert the merged count equals the item count |
 | Writing a scoped round's `analysis.md` with only the changed items in it | Seed from the previous round's file and replace those sections. The artifact is always all N items |
-| Scoping what an agent READS rather than what it writes | Every check sees the whole quiz; only the reporting narrows. `AMBIGUOUS` depends on the rest of the paper |
+| Scoping what an agent READS rather than what it writes | Every check sees the whole quiz; only the reporting narrows. `AMBIGUOUS` depends on the rest of the quiz |
 | Treating `expected_pass` or `trap_quality` as measurements | They drifted on 14/15 unchanged items across three runs. Estimates. Only the answer column and `AMBIGUOUS` block |
 | Regenerating a good item over a `PARTIAL` citation | `PARTIAL` is advisory; fix the citation in `key.md` |
 | Replacing the L3 item of a cross-tier duplicate pair | Replace the cheaper item; the trace swallows the recall item, not the reverse |

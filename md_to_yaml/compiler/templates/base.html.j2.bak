@@ -1,0 +1,1842 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="{{ deck.metadata.theme }}" data-deck-default-view-scale="{{ deck.metadata.view_scale }}" data-deck-remember-view-scale="{{ 'true' if deck.metadata.remember_view_scale else 'false' }}" data-deck-figure-layout-debug="{{ 'true' if figure_layout_debug else 'false' }}" style="--footer-scale: {{ deck.metadata.footer_scale }}; --slide-footer-inset: {{ deck.metadata.footer_inset | e }};">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  {# MathML namespace URI (declared once here; <math> nodes omit redundant xmlns) #}
+  <meta name="mathml-namespace-uri" content="http://www.w3.org/1998/Math/MathML">
+  <title>{{ deck.metadata.title | e }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family={{ deck.metadata.font | replace(' ', '+') }}:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      /* Baseline zoom; per-slide --title-scale / --content-scale set on each section. */
+      --font-scale: 1.35;
+      /* Fixed footer: deck metadata `footer_scale` / `footer_inset` on <html> override these. */
+      --footer-scale: 1;
+      --slide-footer-inset: 0.5in;
+      /* clear fixed .slide-footer-nav (z-index) — figure slides only adjust bottom padding. */
+      --slide-footer-ui-clearance: calc(2.75rem * var(--footer-scale, 1));
+    }
+
+    :root[data-theme="dark"] {
+      --bg: #0d1117;
+      --bg2: #161b22;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: {% if deck.metadata.accent_color %}{{ deck.metadata.accent_color }}{% else %}#f0a500{% endif %};
+      --border: #30363d;
+      --slide-frame: #4a5568;      /* slide outer border — visible on dark bg; override in YAML via accent_color */
+      --font-family: '{{ deck.metadata.font }}', sans-serif;
+      --fig-panel: #1e2330;        /* figure panel bg — contrast vs #e6edf3 text ≥ 9:1 (WCAG AA) */
+      --fig-panel-border: #2d3548;
+      --two-col-title-gap: 0.5in;           /* gap between slide title and two-column content area */
+      --two-col-fig-max-height: 100%;       /* image height cap in two-col (single figure). 100% = fill column; use e.g. 78vh to cap */
+      --two-col-both-fig-max-height: 100%;  /* image height cap when both columns have figures */
+    }
+
+    :root[data-theme="light"] {
+      --bg: #ffffff;
+      --bg2: #f6f8fa;
+      --text: #1f2328;
+      --muted: #656d76;
+      --slide-frame: #a0aab4;      /* slide outer border — visible on light bg */
+      --fig-panel: #eef1f5;        /* figure panel bg — contrast vs #1f2328 text ≥ 11:1 (WCAG AA) */
+      --fig-panel-border: #d0d7de;
+      --accent: {% if deck.metadata.accent_color %}{{ deck.metadata.accent_color }}{% else %}#b06800{% endif %};
+      --border: #d1d9e0;
+      --font-family: '{{ deck.metadata.font }}', sans-serif;
+    }
+
+    html, body {
+      height: 100%;
+      overflow-x: hidden;
+      overflow-y: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-family);
+    }
+
+    .skip-link {
+      position: absolute;
+      left: -9999px;
+      top: 0;
+      z-index: 1000;
+      background: var(--accent);
+      color: var(--bg);
+      padding: 0.5rem 1rem;
+    }
+    .skip-link:focus { left: 0; }
+
+    /* Slide content wrapper: in-page view scale (see HANDOFF_ZOOM.md). Nav stays a
+       sibling so position:fixed in the footer is not broken by transform fallbacks. */
+    #deck-app-root {
+      --deck-view-scale: 1;
+      zoom: var(--deck-view-scale);
+    }
+    @supports not (zoom: 0.5) {
+      #deck-app-root {
+        transform-origin: top center;
+        transform: scale(var(--deck-view-scale));
+      }
+    }
+
+    /* Bottom-centered counter + go-to + view scale (fixed; 1in margin band). */
+    .slide-footer-nav {
+      position: fixed;
+      bottom: var(--slide-footer-inset, 0.5in);
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 100;
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: center;
+      gap: calc(0.5rem * var(--footer-scale, 1));
+      font-size: calc(0.875rem * var(--footer-scale, 1));
+      color: var(--muted);
+      padding: calc(0.2rem * var(--footer-scale, 1)) calc(0.55rem * var(--footer-scale, 1)) calc(0.25rem * var(--footer-scale, 1)) calc(0.55rem * var(--footer-scale, 1));
+      border-radius: calc(8px * var(--footer-scale, 1));
+      background: color-mix(in srgb, var(--bg) 88%, transparent);
+      border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+      box-shadow: 0 1px 8px color-mix(in srgb, var(--bg) 40%, #000 60%);
+      backdrop-filter: blur(6px);
+    }
+
+    #slide-counter {
+      font: inherit;
+      font-size: calc(0.9rem * var(--footer-scale, 1));
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+      user-select: none;
+    }
+
+    .slide-goto-open {
+      font: inherit;
+      font-size: calc(0.8rem * var(--footer-scale, 1));
+      font-weight: 600;
+      line-height: 1;
+      padding: calc(0.2rem * var(--footer-scale, 1)) calc(0.45rem * var(--footer-scale, 1));
+      color: var(--accent);
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .slide-goto-open:hover,
+    .slide-goto-open:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
+    }
+
+    .deck-view-scale-cluster {
+      display: inline-flex;
+      align-items: center;
+      gap: calc(0.25rem * var(--footer-scale, 1));
+      padding-right: calc(0.45rem * var(--footer-scale, 1));
+      margin-right: calc(0.35rem * var(--footer-scale, 1));
+      border-right: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+    }
+
+    .deck-view-scale-btn {
+      font: inherit;
+      font-size: calc(0.95rem * var(--footer-scale, 1));
+      font-weight: 700;
+      line-height: 1;
+      min-width: calc(1.65rem * var(--footer-scale, 1));
+      padding: calc(0.15rem * var(--footer-scale, 1)) calc(0.35rem * var(--footer-scale, 1));
+      color: var(--text);
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .deck-view-scale-btn:hover,
+    .deck-view-scale-btn:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
+    }
+
+    #deck-view-scale-pct {
+      font-variant-numeric: tabular-nums;
+      font-size: calc(0.78rem * var(--footer-scale, 1));
+      color: var(--muted);
+      min-width: calc(2.75rem * var(--footer-scale, 1));
+      text-align: center;
+      user-select: none;
+    }
+
+    .slide-goto-form {
+      display: flex;
+      align-items: center;
+      gap: calc(0.35rem * var(--footer-scale, 1));
+      margin: 0;
+    }
+
+    .slide-goto-form[hidden] {
+      display: none !important;
+    }
+
+    .slide-goto-input {
+      width: 4.5ch;
+      min-width: calc(3rem * var(--footer-scale, 1));
+      max-width: 6rem;
+      font: inherit;
+      font-size: calc(0.875rem * var(--footer-scale, 1));
+      font-variant-numeric: tabular-nums;
+      color: var(--text);
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: calc(0.15rem * var(--footer-scale, 1)) calc(0.35rem * var(--footer-scale, 1));
+    }
+
+    .slide-goto-input:focus {
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
+    }
+
+    main {
+      scroll-snap-type: y mandatory;
+      overflow-y: auto;
+      overflow-x: hidden;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    section[role="group"] {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: 1in;
+      scroll-snap-align: start;
+      border: 2px solid var(--slide-frame);
+      --title-font-mul: calc(var(--font-scale) * var(--title-scale));
+      --content-font-mul: calc(var(--font-scale) * var(--content-scale));
+    }
+    /* Title and divider slides: centered (presentation default) */
+    section[role="group"].slide-title,
+    section[role="group"].slide-divider {
+      justify-content: center;
+    }
+    .slide-content-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    /* Math (MathML) inside headings — "inline math" keeps MathML inline-flow;
+       plain "inline" is ignored by Chromium's MathML layout engine. */
+    h1 math, h2 math, h3 math {
+      display: inline math;
+      font-size: inherit;
+    }
+    /* Override text-wrap: balance for headings with math to prevent fragments from stacking */
+    h1:has(math), h2:has(math), h3:has(math) {
+      text-wrap: wrap;
+    }
+    /* Class-based fallback when :has() is unsupported or balance still wins (see engine title_has_math) */
+    section.slide-heading-math h1,
+    section.slide-heading-math h2,
+    section.slide-heading-math h3 {
+      text-wrap: wrap !important;
+    }
+    section.slide-heading-math h1 math,
+    section.slide-heading-math h2 math,
+    section.slide-heading-math h3 math {
+      display: inline math !important;
+      vertical-align: baseline;
+    }
+
+    /* Title slide (h1) — ADA projection scale */
+    h1 {
+      font-size: calc(clamp(48px, 10vw, 96px) * var(--title-font-mul));
+      font-weight: 700;
+      line-height: 1.0;
+      text-wrap: balance;
+      margin-bottom: 1rem;
+      text-align: center;
+      color: var(--text);
+    }
+    /* h1/h2 + optional subtitle: stack font-size is the title; subtitle is 80% */
+    .slide-heading-stack {
+      text-align: center;
+      margin-bottom: 1rem;
+    }
+    .slide-heading-stack--title {
+      font-size: calc(clamp(48px, 10vw, 96px) * var(--title-font-mul));
+      margin-bottom: 1rem;
+    }
+    .slide-heading-stack--title h1 {
+      font-size: 1em;
+      margin-bottom: 0;
+    }
+    .slide-heading-stack--title .slide-subtitle {
+      font-size: 0.8em;
+      font-weight: 500;
+      line-height: 1.25;
+      text-align: center;
+      color: var(--muted);
+      margin-top: 0.35em;
+      margin-bottom: 0;
+      text-wrap: balance;
+    }
+    .slide-heading-stack--standard {
+      font-size: calc(clamp(32px, 5vw, 52px) * var(--title-font-mul));
+    }
+    .slide-heading-stack--standard h2 {
+      font-size: 1em;
+      margin-bottom: 0;
+    }
+    .slide-heading-stack--standard .slide-subtitle {
+      font-size: 0.8em;
+      font-weight: 500;
+      line-height: 1.25;
+      text-align: center;
+      color: var(--muted);
+      margin-top: 0.35em;
+      margin-bottom: 0;
+      text-wrap: balance;
+    }
+    .slide-heading-stack--divider {
+      font-size: calc(clamp(48px, 8vw, 80px) * var(--title-font-mul));
+    }
+    .slide-heading-stack--divider h2 {
+      font-size: 1em;
+      margin-bottom: 0;
+    }
+    .slide-heading-stack--divider .slide-subtitle {
+      font-size: 0.8em;
+      font-weight: 500;
+      line-height: 1.25;
+      text-align: center;
+      color: var(--muted);
+      margin-top: 0.35em;
+      margin-bottom: 0;
+      text-wrap: balance;
+    }
+    .slide-quote-block {
+      font-size: calc(clamp(28px, 3.5vw, 44px) * var(--title-font-mul));
+    }
+    section.slide-quote .slide-quote-block blockquote {
+      font-size: 1em;
+    }
+    section.slide-quote .slide-quote-block .slide-subtitle {
+      font-size: 0.8em;
+      font-style: normal;
+      font-weight: 500;
+      line-height: 1.25;
+      color: var(--muted);
+      margin-top: 0.5em;
+      text-wrap: balance;
+    }
+    .slide-title .author {
+      font-size: calc(clamp(20px, 2.2vw, 28px) * var(--content-font-mul));
+      text-align: center;
+      color: var(--muted);
+    }
+
+    h2 {
+      font-size: calc(clamp(32px, 5vw, 52px) * var(--title-font-mul));
+      font-weight: 700;
+      line-height: 1.1;
+      text-wrap: balance;
+      margin-bottom: 1rem;
+      color: var(--accent);
+      text-align: center;
+    }
+
+    /* **$...$** / **text $x$** in YAML: accent like h2; plain text in span needs color too */
+    .deck-math-emphasis {
+      color: var(--accent);
+      font-weight: 700;
+    }
+    .deck-math-emphasis math,
+    .deck-math-emphasis math * {
+      color: var(--accent);
+    }
+    h3 {
+      font-size: calc(clamp(22px, 2.8vw, 34px) * var(--title-font-mul));
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+    .slide-body {
+      font-size: calc(clamp(20px, 2.2vw, 28px) * var(--content-font-mul));
+      line-height: 1.6;
+      text-align: left;
+    }
+    .slide-body ul,
+    .slide-body ol { padding-left: 2rem; }
+    .slide-body ol { padding-left: 2.5rem; }
+    .slide-body ol li { padding-left: 0.5rem; }
+    .slide-body li { margin-bottom: 0.75em; }
+    /* Nested lists: space after the parent line matches gap between top-level bullets */
+    .slide-body li > ul,
+    .slide-body li > ol {
+      margin-top: 0.75em;
+    }
+
+    /* Display equations ($$...$$): scale via --math-display-scale; center vs start via section class */
+    .slide-body math[display="block"],
+    .hero-body math[display="block"],
+    .hero-description math[display="block"] {
+      display: block;
+      font-size: calc(1em * var(--math-display-scale, 1));
+      margin: 0.85em 0;
+      text-align: start;
+      color: var(--math-display-color, inherit);
+    }
+    /* Table slides: block math in cells (not .slide-body) still get display-math color */
+    section.slide-table td math[display="block"],
+    section.slide-table th math[display="block"] {
+      color: var(--math-display-color, inherit);
+    }
+    section.math-display-eq-center .slide-body math[display="block"],
+    section.math-display-eq-center .hero-body math[display="block"],
+    section.math-display-eq-center .hero-description math[display="block"] {
+      /* Without an intrinsic width, block <math> fills the line and
+         margin:auto does not move the visual formula (Markdown often emits
+         bare <math> between <p> blocks, so the p:flex rule does not run). */
+      width: fit-content;
+      max-width: 100%;
+      margin-left: auto;
+      margin-right: auto;
+      text-align: center;
+    }
+    section.math-display-eq-start .slide-body math[display="block"],
+    section.math-display-eq-start .hero-body math[display="block"],
+    section.math-display-eq-start .hero-description math[display="block"] {
+      margin-left: 0;
+      margin-right: 0;
+      text-align: start;
+    }
+    .slide-body p:has(> math[display="block"]:only-child),
+    .hero-body p:has(> math[display="block"]:only-child),
+    .hero-description p:has(> math[display="block"]:only-child) {
+      margin: 0;
+    }
+    /* Flex centers block MathML reliably (margin:auto on <math> is inconsistent across UAs). */
+    section.math-display-eq-center .slide-body p:has(> math[display="block"]:only-child),
+    section.math-display-eq-center .hero-body p:has(> math[display="block"]:only-child),
+    section.math-display-eq-center .hero-description p:has(> math[display="block"]:only-child) {
+      display: flex;
+      justify-content: center;
+      width: 100%;
+      box-sizing: border-box;
+      text-align: center;
+    }
+    section.math-display-eq-start .slide-body p:has(> math[display="block"]:only-child),
+    section.math-display-eq-start .hero-body p:has(> math[display="block"]:only-child),
+    section.math-display-eq-start .hero-description p:has(> math[display="block"]:only-child) {
+      display: block;
+      text-align: start;
+    }
+    /* Table slides: no .slide-body wrapper; center display math in cells when requested */
+    section.math-display-eq-center.slide-table td math[display="block"],
+    section.math-display-eq-center.slide-table th math[display="block"] {
+      display: block;
+      width: fit-content;
+      max-width: 100%;
+      margin-left: auto;
+      margin-right: auto;
+      text-align: center;
+    }
+    section.math-display-eq-center.slide-table td:has(> math[display="block"]:only-child),
+    section.math-display-eq-center.slide-table th:has(> math[display="block"]:only-child) {
+      text-align: center;
+      vertical-align: middle;
+    }
+    /* Transcript table: beat cell text-align:left from theme rules */
+    main.deck-flavor-transcript section.slide-table.math-display-eq-center td:has(> math[display="block"]:only-child),
+    main.deck-flavor-transcript section.slide-table.math-display-eq-center th:has(> math[display="block"]:only-child) {
+      text-align: center;
+    }
+
+    /* Markdown tables in body */
+    .slide-body table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      margin: 1.5rem 0;
+    }
+    .slide-body th,
+    .slide-body td {
+      padding: 0.65em 1.4em;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    .slide-body th {
+      color: var(--accent);
+      font-weight: 700;
+      border-bottom: 2px solid var(--border);
+    }
+    .slide-body tr:last-child td { border-bottom: none; }
+    .slide-body td:first-child { color: var(--accent); font-weight: 700; }
+    .slide-body th:not(:last-child),
+    .slide-body td:not(:last-child) { padding-right: 2.5em; }
+
+    /* Markdown **bold** in body: same accent as h2 (not only **$x$** / **text $x$** spans) */
+    .slide-body strong {
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .hero-description {
+      font-size: calc(clamp(22px, 2.8vw, 34px) * var(--title-font-mul));
+      color: var(--muted);
+      text-align: center;
+    }
+    .hero-body {
+      font-size: calc(clamp(20px, 2.4vw, 30px) * var(--title-font-mul));
+      color: var(--muted);
+      text-align: center;
+      max-width: 50em;
+      margin: 1rem auto 0;
+      line-height: 1.6;
+    }
+
+    figcaption {
+      font-size: calc(clamp(18px, 1.8vw, 24px) * var(--content-font-mul));
+      color: var(--muted);
+      margin-top: 0.75rem;
+    }
+
+    .two-col {
+      display: grid;
+      gap: 2rem;
+      align-items: stretch;
+      min-height: 0;
+      height: 100%;
+    }
+    .two-col-50-50 { grid-template-columns: 1fr 1fr; }
+    .two-col-40-60 { grid-template-columns: 2fr 3fr; }
+    .two-col-60-40 { grid-template-columns: 3fr 2fr; }
+    /* Columns fill the grid cell; image/body centered within */
+    .two-col > .col-left,
+    .two-col > .col-right {
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+    /* Hard viewport height on two-column slides so the figure's max-height:100% cascade resolves.
+       Without this, section[role="group"]'s min-height:100vh lets the section grow past the viewport
+       and the image overflows into/past the bottom 1in margin. */
+    section[role="group"].slide-two-column,
+    section[role="group"].slide-comparison {
+      height: 100vh;
+      max-height: 100vh;
+      overflow: hidden;
+    }
+    /* Reserve a gap below the title so the figure never encroaches on it */
+    .slide-two-column .slide-content-area,
+    .slide-comparison .slide-content-area {
+      min-height: 0;
+      margin-top: var(--two-col-title-gap);
+    }
+    /* Text split in two columns: start under title (avoid vertical centering gap) */
+    section.slide-two-column .slide-content-area:has(.two-col--markdown-split),
+    section.slide-comparison .slide-content-area {
+      justify-content: flex-start;
+      margin-top: 1.5in;
+    }
+    section.slide-two-column .two-col--markdown-split > .col-left,
+    section.slide-two-column .two-col--markdown-split > .col-right,
+    section.slide-comparison .two-col > .col-left,
+    section.slide-comparison .two-col > .col-right {
+      justify-content: flex-start;
+    }
+    /* Heading-to-list: .slide-body must be flex for gap to apply (col-* only has one child). */
+    section.slide-two-column .two-col--markdown-split > .col-left.slide-body,
+    section.slide-two-column .two-col--markdown-split > .col-right.slide-body,
+    section.slide-comparison .two-col > .col-left.slide-body,
+    section.slide-comparison .two-col > .col-right.slide-body {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      width: 100%;
+      gap: calc(1.35rem * 1.5 * 1.5);
+    }
+    section.slide-two-column .two-col--markdown-split .slide-body > h3,
+    section.slide-comparison .two-col .slide-body > h3 {
+      font-size: calc(clamp(22px, 2.8vw, 34px) * var(--title-font-mul) * 1.2);
+      margin-bottom: 0;
+    }
+    section.slide-two-column .two-col--markdown-split .slide-body > ul,
+    section.slide-comparison .two-col .slide-body > ul {
+      margin-top: 0;
+    }
+
+    /* Flex item min-height:auto would prevent shrinking — images need min-height:0 to honor max-height:100% */
+    .two-col img { min-height: 0; flex-shrink: 1; }
+    /* Comparison slide: first bold line in each column is the column heading */
+    section.slide-comparison .two-col-50-50 > .slide-body > p:first-of-type {
+      margin-bottom: 1rem;
+    }
+    section.slide-comparison .two-col-50-50 > .slide-body > p:first-of-type strong {
+      font-size: calc(clamp(24px, 2.9vw, 36px) * var(--title-font-mul));
+      font-weight: 700;
+      color: var(--accent);
+      line-height: 1.25;
+      display: block;
+    }
+    .two-col img { max-width: 100%; max-height: var(--two-col-fig-max-height); object-fit: contain; display: block; margin: 0 auto; }
+    /* When both columns have figures: center images, add spacing around the grid */
+    .two-col-both { justify-items: center; margin-top: 1.5rem; margin-bottom: 1.5rem; }
+    .two-col-caption-above { margin-bottom: 1.5rem; }
+    .two-col-both img { max-height: var(--two-col-both-fig-max-height); }
+
+    blockquote {
+      font-size: calc(clamp(28px, 3.5vw, 44px) * var(--content-font-mul));
+      font-style: italic;
+      border-left: 4px solid var(--accent);
+      padding-left: 1.5rem;
+    }
+    .attribution { color: var(--muted); margin-top: 1rem; }
+
+    pre {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      padding: 1.5rem;
+      overflow-x: auto;
+      overflow-y: auto;
+      max-height: 70vh;
+      font-size: calc(clamp(15px, 1.6vw, 20px) * var(--content-font-mul));
+      line-height: 1.6;
+    }
+    pre:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+    code { font-family: 'IBM Plex Mono', monospace; font-size: calc(clamp(15px, 1.6vw, 20px) * var(--content-font-mul)); }
+
+    .slide-code { overflow: auto; max-height: 75vh; border-radius: 0.5rem; }
+    .slide-codetable { width: 100%; border-collapse: collapse; }
+    .slide-codetable td.linenos { vertical-align: top; padding-right: 0.5em; border-right: 1px solid var(--border); user-select: none; width: 1%; white-space: nowrap; }
+    .slide-codetable td.code { vertical-align: top; padding-left: 1em; width: 99%; }
+    .slide-codetable td.code pre { border: none; padding: 0; margin: 0; max-height: none; }
+
+    .diagram-container { text-align: center; max-height: 75vh; overflow: auto; }
+    .diagram-container svg { max-width: 100%; max-height: 52vh; }
+    /* Standalone diagram: JS post-processes SVG sizing after Mermaid renders */
+    .slide-diagram .diagram-container svg { display: block; margin: 0 auto; }
+    pre.mermaid { background: transparent; border: none; padding: 0; max-height: none; text-align: center; }
+
+    /* Mermaid v11+ sometimes renders SVGs with a tiny intrinsic size (and/or
+       different id schemes across diagram types). The JS resizer should fix
+       this, but this CSS is a safe fallback so diagrams still fill the
+       available panel area when sizing logic misses. */
+    .diagram-container svg {
+      width: 100% !important;
+      height: 100% !important;
+      max-width: 100%;
+      max-height: 100%;
+    }
+    /* Gutter between diagram and caption text below */
+    .diagram-caption { margin-top: 1.5rem; }
+    /* Panel background on standalone diagram slides */
+    .slide-diagram .slide-content-area > .diagram-container {
+      background: var(--fig-panel);
+      border: 1px solid var(--fig-panel-border);
+      border-radius: 10px;
+      padding: 1.5rem 2rem;
+    }
+    /* Panel background on two-column diagram columns */
+    .slide-two-column .diagram-container {
+      background: var(--fig-panel);
+      border: 1px solid var(--fig-panel-border);
+      border-radius: 10px;
+      padding: 1rem 1.5rem;
+    }
+
+    /* Standalone diagram slide: container fills content area and centers diagram vertically */
+    .slide-diagram .slide-content-area > .diagram-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: stretch;
+    }
+    /* Inner wrapper and pre must center their SVG content horizontally */
+    .slide-diagram .diagram-container > [role="img"],
+    .slide-diagram .diagram-container > pre.mermaid {
+      text-align: center;
+    }
+    /* Two-column diagram column: fill column width, let SVG viewBox set height */
+    .slide-two-column .diagram-container {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: stretch;
+      width: 100%;
+    }
+    .slide-two-column .diagram-container > [role="img"],
+    .slide-two-column .diagram-container > pre.mermaid {
+      text-align: center;
+    }
+
+    /* layout: figure — one viewport; flex min-height:0; extra bottom padding so
+       the white panel never sits under the fixed .slide-footer-nav (1in margin band). */
+    section[role="group"].slide-figure {
+      height: 100vh;
+      max-height: 100vh;
+      min-height: 0;
+      overflow: hidden;
+      padding: 1in 1in calc(1in + var(--slide-footer-ui-clearance, 2.75rem)) 1in;
+    }
+    /* overflow: visible here — zoom / transform:scale on media can paint past the
+       unscaled box; hidden was clipping the figure (left/bottom). Section clips to 100vh. */
+    .slide-figure .slide-content-area {
+      min-height: 0;
+      flex: 1 1 0;
+      overflow: visible;
+    }
+    .slide-figure .figure-container {
+      min-height: 0;
+      flex: 1 1 0;
+      overflow: visible;
+    }
+    .slide-figure .figure-asset-wrap {
+      min-height: 0;
+    }
+    .slide-figure .figure-container > figure {
+      min-height: 0;
+      overflow: visible;
+    }
+    .slide-figure .figure-asset-wrap--fill {
+      min-height: 0;
+    }
+
+    /* layout: figure — Mermaid: fit-content panel. JPEG/PNG/SVG: .figure-asset-wrap--fill + width:100% img. */
+    .figure-container {
+      text-align: center;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+    }
+    .figure-container figure {
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      max-width: 100%;
+      width: 100%;
+    }
+    .figure-asset-wrap {
+      display: block;
+      width: fit-content;
+      max-width: min(100%, calc(88% * var(--figure-scale, 1)));
+      margin-left: auto;
+      margin-right: auto;
+      box-sizing: border-box;
+      background: var(--fig-panel);
+      border: 1px solid var(--fig-panel-border);
+      border-radius: 10px;
+      padding: 1.5rem 2rem 1rem;
+    }
+    .figure-only .figure-asset-wrap { padding: 2rem 2.5rem 1.25rem; }
+    .slide-figure .figure-asset-wrap {
+      max-width: min(100%, calc(88% * var(--figure-scale, 1)));
+    }
+    .slide-figure.figure-only .figure-asset-wrap {
+      max-width: min(100%, calc(95% * var(--figure-scale, 1)));
+    }
+    .figure-asset {
+      display: block;
+      width: 100%;
+      max-width: 100%;
+    }
+    .figure-asset > img,
+    .figure-asset .diagram-container img {
+      max-width: 100%;
+      max-height: calc(72vh * var(--figure-scale, 1));
+      width: auto;
+      height: auto;
+      object-fit: contain;
+      display: block;
+      margin: 0 auto;
+    }
+    .slide-figure.figure-only .figure-asset-wrap:not(.figure-asset-wrap--fill) .figure-asset > img,
+    .slide-figure.figure-only .figure-asset-wrap:not(.figure-asset-wrap--fill) .figure-asset .diagram-container img {
+      max-height: calc(78vh * var(--figure-scale, 1));
+    }
+    .slide-figure .figure-asset .diagram-container {
+      text-align: center;
+      max-width: 100%;
+      overflow: visible;
+    }
+    .slide-figure .figure-asset .diagram-container svg {
+      max-width: 100%;
+      max-height: calc(72vh * var(--figure-scale, 1));
+      width: auto;
+      height: auto;
+      object-fit: contain;
+      display: block;
+      margin: 0 auto;
+    }
+    .slide-figure.figure-only .figure-asset .diagram-container svg {
+      max-height: calc(78vh * var(--figure-scale, 1));
+    }
+    .slide-figure .figure-asset .diagram-container pre.mermaid {
+      max-width: 100%;
+    }
+    /* layout: figure — rasters (JPEG/PNG) & file SVG (not Mermaid); .figure-asset-wrap--fill.
+       transform: scale() does not affect layout, so the panel stayed as tall as the
+       unscaled box and file SVG in .diagram-container read off-center. Prefer zoom
+       in engines that support it: layout size tracks the visible scale. Firefox: base
+       rules + flex on .figure-asset / .diagram-container. Landscape still uses scale. */
+    .figure-asset-wrap.figure-asset-wrap--fill {
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      overflow: visible;
+    }
+    .slide-figure .figure-asset-wrap.figure-asset-wrap--fill,
+    .slide-figure.figure-only .figure-asset-wrap.figure-asset-wrap--fill {
+      max-width: 100%;
+    }
+    .figure-asset-wrap--fill .figure-asset {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      min-height: 0;
+    }
+    .figure-asset-wrap--fill .figure-asset > img,
+    .figure-asset-wrap--fill .figure-asset img {
+      width: 100%;
+      max-width: 100%;
+      max-height: 80vh;
+      height: auto;
+      object-fit: contain;
+      display: block;
+      margin: 0 auto;
+      transform: scale(var(--figure-scale, 1));
+      transform-origin: center center;
+    }
+    .slide-figure.figure-only .figure-asset-wrap--fill .figure-asset > img,
+    .slide-figure.figure-only .figure-asset-wrap--fill .figure-asset img {
+      max-height: 85vh;
+    }
+    .figure-asset-wrap--fill .figure-asset .diagram-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      line-height: 0;
+      width: 100%;
+    }
+    .figure-asset-wrap--fill .figure-asset .diagram-container svg {
+      width: auto;
+      max-width: 100%;
+      max-height: 80vh;
+      height: auto;
+      object-fit: contain;
+      display: block;
+      margin: 0 auto;
+      transform: scale(var(--figure-scale, 1));
+      transform-origin: center center;
+    }
+    .slide-figure.figure-only .figure-asset-wrap--fill .figure-asset .diagram-container svg {
+      max-height: 85vh;
+    }
+    @supports (zoom: 1) {
+      .figure-asset-wrap--fill .figure-asset > img,
+      .figure-asset-wrap--fill .figure-asset img {
+        max-height: 80vh;
+        transform: none;
+        transform-origin: unset;
+        zoom: var(--figure-scale, 1);
+      }
+      .slide-figure.figure-only .figure-asset-wrap--fill .figure-asset > img,
+      .slide-figure.figure-only .figure-asset-wrap--fill .figure-asset img {
+        max-height: 85vh;
+      }
+      .figure-asset-wrap--fill .figure-asset .diagram-container svg {
+        width: auto;
+        max-width: 100%;
+        max-height: 80vh;
+        transform: none;
+        transform-origin: unset;
+        zoom: var(--figure-scale, 1);
+      }
+      .slide-figure.figure-only .figure-asset-wrap--fill .figure-asset .diagram-container svg {
+        max-height: 85vh;
+      }
+    }
+    /* Single diagram slide: diagram dominates */
+    .diagram-only .diagram-container { max-height: 80vh; }
+    .diagram-only .diagram-container svg { max-height: 75vh; }
+
+    .divider-slide { align-items: center; text-align: center; }
+
+    /* layout: transcribe — dense left-aligned body (transcribe_to_html skill) */
+    section.slide-transcribe {
+      justify-content: flex-start;
+      align-items: stretch;
+    }
+    section.slide-transcribe .slide-content-area {
+      justify-content: flex-start;
+    }
+    section.slide-transcribe h2 {
+      font-size: calc(16pt * var(--title-font-mul));
+      font-weight: 600;
+      line-height: 1.35;
+      text-wrap: balance;
+      margin-bottom: 0.5rem;
+      color: var(--text);
+      text-align: left;
+    }
+    /* Override balance for transcribe headings with math */
+    section.slide-transcribe h2:has(math) {
+      text-wrap: wrap;
+    }
+    section.slide-transcribe .slide-heading-stack--standard {
+      font-size: calc(16pt * var(--title-font-mul));
+    }
+    section.slide-transcribe .slide-heading-stack--standard .slide-subtitle {
+      text-align: left;
+    }
+    section.slide-transcribe .slide-body {
+      font-size: calc(14pt * var(--content-font-mul));
+      line-height: 1.45;
+      text-align: left;
+    }
+    section.slide-transcribe .slide-body p {
+      margin: 0 0 0.85em 0;
+    }
+    section.slide-transcribe .slide-body p:last-child {
+      margin-bottom: 0;
+    }
+    section.slide-transcribe .slide-body li {
+      margin-bottom: 0.35em;
+    }
+    section.slide-transcribe .slide-body strong {
+      color: var(--text);
+      font-weight: 700;
+    }
+
+    /* flavor: transcript — same dense left alignment using layout: content (+ table) */
+    main.deck-flavor-transcript section.slide-content,
+    main.deck-flavor-transcript section.slide-table {
+      justify-content: flex-start;
+      align-items: stretch;
+    }
+    main.deck-flavor-transcript section.slide-content .slide-content-area,
+    main.deck-flavor-transcript section.slide-table .slide-content-area {
+      justify-content: flex-start;
+    }
+    main.deck-flavor-transcript section.slide-content h2,
+    main.deck-flavor-transcript section.slide-table h2 {
+      font-size: calc(16pt * var(--title-font-mul));
+      font-weight: 600;
+      line-height: 1.35;
+      text-wrap: balance;
+      margin-bottom: 0.5rem;
+      color: var(--text);
+      text-align: left;
+    }
+    /* Override balance for transcript flavor headings with math */
+    main.deck-flavor-transcript section.slide-content h2:has(math),
+    main.deck-flavor-transcript section.slide-table h2:has(math) {
+      text-wrap: wrap;
+    }
+    main.deck-flavor-transcript section.slide-content .slide-heading-stack--standard,
+    main.deck-flavor-transcript section.slide-table .slide-heading-stack--standard {
+      font-size: calc(16pt * var(--title-font-mul));
+    }
+    main.deck-flavor-transcript section.slide-content .slide-heading-stack--standard .slide-subtitle,
+    main.deck-flavor-transcript section.slide-table .slide-heading-stack--standard .slide-subtitle {
+      text-align: left;
+    }
+    main.deck-flavor-transcript section.slide-content .slide-body {
+      font-size: calc(14pt * var(--content-font-mul));
+      line-height: 1.45;
+      text-align: left;
+    }
+    main.deck-flavor-transcript section.slide-content .slide-body p {
+      margin: 0 0 0.85em 0;
+    }
+    main.deck-flavor-transcript section.slide-content .slide-body p:last-child {
+      margin-bottom: 0;
+    }
+    main.deck-flavor-transcript section.slide-content .slide-body li {
+      margin-bottom: 0.35em;
+    }
+    main.deck-flavor-transcript section.slide-content .slide-body strong,
+    main.deck-flavor-transcript section.slide-table .slide-body strong {
+      color: var(--text);
+      font-weight: 700;
+    }
+    main.deck-flavor-transcript section.slide-table .table-scroll-wrapper {
+      font-size: calc(14pt * var(--content-font-mul));
+      line-height: 1.45;
+    }
+    main.deck-flavor-transcript section.slide-table .table-caption {
+      text-align: left;
+      font-size: calc(14pt * var(--content-font-mul));
+      caption-side: top;
+    }
+
+    .steps-list {
+      counter-reset: step;
+      list-style: none;
+      padding: 0;
+    }
+    .steps-list li {
+      counter-increment: step;
+      margin-bottom: 1rem;
+      padding-left: 2.5rem;
+      position: relative;
+    }
+    .steps-list li::before {
+      content: counter(step);
+      position: absolute;
+      left: 0;
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .summary-list { list-style: none; padding: 0; }
+    .summary-list li::before { content: '\2713 '; color: var(--accent); font-weight: 700; }
+
+    .table-scroll-wrapper { overflow-x: auto; max-width: 100%; background: var(--fig-panel); border: 1px solid var(--fig-panel-border); border-radius: 10px; padding: 1rem 1.5rem; }
+    .table-scroll-wrapper:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .table-scroll-wrapper table { width: 100%; border-collapse: collapse; }
+    .table-scroll-wrapper th, .table-scroll-wrapper td { padding: 0.5em 1em; border: 1px solid var(--accent, #d4a017); text-align: left; font-size: calc(clamp(18px, 1.9vw, 26px) * var(--content-font-mul)); }
+    .table-scroll-wrapper tr.span-row td {
+      color: var(--muted);
+      font-style: italic;
+      font-size: calc(clamp(15px, 1.5vw, 20px) * var(--content-font-mul));
+      border-top: 2px solid var(--accent);
+      border-left: none;
+      border-right: none;
+      padding-top: 0.6em;
+    }
+    .table-scroll-wrapper caption {
+      font-size: calc(clamp(18px, 1.8vw, 24px) * var(--content-font-mul));
+      font-weight: bold;
+      caption-side: bottom;
+      margin-top: 0.75em;
+      text-align: left;
+      color: var(--muted);
+    }
+    .code-language-label { position: absolute; top: 0.25em; right: 0.5em; font-size: 0.75em; opacity: 0.6; }
+
+    .slide-notes { display: none; }
+
+    @media print {
+      @page { size: landscape; margin: 0; }
+      html, body {
+        overflow: visible !important;
+        height: auto !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      main { overflow: visible !important; height: auto !important; scroll-snap-type: none !important; }
+      section[role="group"] {
+        break-after: page;
+        height: 100vh;
+        overflow: hidden;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      .slide-footer-nav { display: none !important; }
+    }
+
+    .visually-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    /* —— layout: figure — debug box model (deck YAML: figure_layout_debug: true) —— */
+    html[data-deck-figure-layout-debug="true"] section.slide-figure .figure-asset-wrap {
+      border: 3px solid #cc0000 !important;
+      margin: 14px;
+      box-sizing: border-box;
+    }
+    html[data-deck-figure-layout-debug="true"] section.slide-figure .figure-asset > img,
+    html[data-deck-figure-layout-debug="true"] section.slide-figure .figure-asset .diagram-container {
+      border: 3px solid #cc0000 !important;
+      box-sizing: border-box;
+    }
+
+    {{ pygments_css | safe }}
+    /* ── figure-wide layout: smart figure — flex under 1in slide padding;
+       figure area flexes; media scales (max 100% / object-fit) so footer fits. ─ */
+    section.slide-figure-wide {
+      height: 100vh;
+      max-height: 100vh;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+    section.slide-figure-wide > h2 {
+      flex-shrink: 0;
+    }
+    .slide-figure-wide .slide-content-area {
+      justify-content: flex-start;
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .figure-wide-layout {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+    .figure-wide-summary {
+      flex: 0 0 auto;
+      text-align: left;
+      max-width: 64em;
+      font-size: calc(clamp(18px, 2vw, 24px) * var(--content-font-mul));
+      color: var(--muted);
+      margin-bottom: 0.25rem;
+    }
+    .figure-wide-figure-wrap {
+      /* Taller default panel; flex still grows when space allows. */
+      flex: 1 1 auto;
+      flex-shrink: 0;
+      min-height: clamp(12rem, 36vh, 62vh);
+      display: flex;
+      flex-direction: column;
+      /* visible: scaled max-width/max-height (figure_scale) may exceed 100% of band */
+      overflow: visible;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      padding: 1rem 1.25rem;
+    }
+    .figure-wide-figure {
+      margin: 0;
+      min-width: 0;
+      min-height: 0;
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      width: 100%;
+    }
+    .figure-wide-media {
+      flex: 1 1 auto;
+      min-height: 0;
+      min-width: 0;
+      width: 100%;
+      max-height: 100%;
+      align-self: stretch;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .figure-wide-media .diagram-container {
+      flex: 1 1 auto;
+      min-height: 0;
+      min-width: 0;
+      width: 100%;
+      max-height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      overflow: auto;
+    }
+    .figure-wide-media .diagram-container pre.mermaid {
+      max-width: 100%;
+      max-height: 100%;
+    }
+    /* figure-wide: apply figure_scale like layout: figure --fill (zoom / transform).
+       Do not use calc(100% * scale) on img max-height — percentage base is often
+       indefinite, so the rule is dropped and scale appears to do nothing. */
+    .figure-wide-figure > .figure-wide-media > img,
+    .figure-wide-media img {
+      flex: 0 1 auto;
+      max-width: 100%;
+      max-height: 58vh;
+      width: auto;
+      height: auto;
+      object-fit: contain;
+      margin: 0 auto;
+      display: block;
+      transform: scale(var(--figure-scale, 1));
+      transform-origin: center center;
+    }
+    .figure-wide-media .diagram-container svg,
+    .slide-figure-wide .figure-wide-media .diagram-container svg {
+      max-width: 100%;
+      max-height: 58vh;
+      width: auto;
+      height: auto;
+      object-fit: contain;
+      display: block;
+      margin: 0 auto;
+      transform: scale(var(--figure-scale, 1));
+      transform-origin: center center;
+    }
+    @supports (zoom: 1) {
+      .slide-figure-wide .figure-wide-media > img,
+      .slide-figure-wide .figure-wide-media img {
+        max-height: 58vh;
+        transform: none;
+        transform-origin: unset;
+        zoom: var(--figure-scale, 1);
+      }
+      .slide-figure-wide .figure-wide-media .diagram-container svg {
+        max-width: 100%;
+        max-height: 58vh;
+        transform: none;
+        transform-origin: unset;
+        zoom: var(--figure-scale, 1);
+      }
+    }
+    .figure-wide-below {
+      flex: 0 0 auto;
+    }
+    .figure-wide-columns {
+      align-items: start;
+    }
+    .figure-wide-columns .col-left,
+    .figure-wide-columns .col-right {
+      min-width: 0;
+    }
+    .figure-wide-columns h3,
+    .figure-wide-single-col h3 {
+      color: var(--accent);
+      margin-bottom: 0.4rem;
+    }
+    .figure-wide-single-col {
+      width: 100%;
+    }
+    .slide-figure-wide figcaption {
+      flex: 0 0 auto;
+      margin-top: 0.75rem;
+      text-align: left;
+    }
+  </style>
+</head>
+<body>
+  <a href="#main-content" class="skip-link">Skip to content</a>
+  <main id="main-content" role="region" aria-roledescription="carousel" aria-label="{{ deck.metadata.title | e }}"{% if deck.metadata.flavor == 'transcript' %} class="deck-flavor-transcript"{% endif %}>
+    <div id="deck-app-root">
+    {% for s in slides %}
+    {% set slide = s.slide %}
+    {% set slide_id = s.slide_id %}
+    {% set rendered_title = s.rendered_title %}
+    {% set rendered_subtitle = s.rendered_subtitle %}
+    {% set rendered_author_line = s.rendered_author_line %}
+    {% set rendered_body = s.rendered_body %}
+    {% set rendered_table_headers = s.rendered_table_headers %}
+    {% set rendered_table_rows = s.rendered_table_rows %}
+    {% set rendered_table_caption = s.rendered_table_caption %}
+    {% set rendered_description = s.rendered_description %}
+    {% set rendered_code = s.rendered_code %}
+    {% set rendered_image = s.rendered_image %}
+    {% set rendered_svg = s.rendered_svg %}
+    {% set rendered_mermaid = s.rendered_mermaid %}
+    {% set rendered_left_col = s.rendered_left_col %}
+    {% set rendered_right_col = s.rendered_right_col %}
+    {% set rendered_fw_summary = s.rendered_fw_summary %}
+    {% set rendered_fw_left_heading = s.rendered_fw_left_heading %}
+    {% set rendered_fw_left_body = s.rendered_fw_left_body %}
+    {% set rendered_fw_right_heading = s.rendered_fw_right_heading %}
+    {% set rendered_fw_right_body = s.rendered_fw_right_body %}
+    {% set title_has_math = s.title_has_math %}
+    {% set extra_class = '' %}
+    {% if slide.layout == 'figure' and not slide.body %}{% set extra_class = ' figure-only' %}{% endif %}
+    {% if slide.layout == 'diagram' and not slide.body %}{% set extra_class = ' diagram-only' %}{% endif %}
+    {% if title_has_math %}{% set extra_class = extra_class ~ ' slide-heading-math' %}{% endif %}
+    {% if s.math_display_center|default(true) %}{% set extra_class = extra_class ~ ' math-display-eq-center' %}{% else %}{% set extra_class = extra_class ~ ' math-display-eq-start' %}{% endif %}
+    <section id="{{ slide_id }}" role="group" class="slide-{{ slide.layout }}{{ extra_class }}"{% if s.bullet_stagger_json %} data-bullet-stagger="{{ s.bullet_stagger_json | e }}"{% endif %}{% if s.bullet_focus_json %} data-bullet-focus="{{ s.bullet_focus_json | e }}"{% endif %} style="--title-scale: {{ s.title_scale }}; --content-scale: {{ s.content_scale }}; --math-display-scale: {{ s.math_display_scale }};{% if s.math_display_color %} --math-display-color: {{ s.math_display_color | e }};{% endif %}{% if slide.layout in ['figure', 'figure-wide'] and s.figure_scale is not none %} --figure-scale: {{ s.figure_scale }};{% endif %}" aria-roledescription="slide" aria-label="Slide {{ loop.index }} of {{ total }}" aria-labelledby="{{ slide_id }}-heading">
+      {% include slide.layout ~ '.html.j2' %}
+    </section>
+    {% endfor %}
+    </div>
+    <nav id="slide-footer-nav" class="slide-footer-nav" aria-label="Slide position, view scale, and go to slide">
+      <span class="deck-view-scale-cluster" role="group" aria-label="View scale">
+        <button type="button" id="deck-view-zoom-out" class="deck-view-scale-btn" title="Zoom out (keyboard −)" aria-keyshortcuts="-">−</button>
+        <span id="deck-view-scale-pct" aria-live="polite">100%</span>
+        <button type="button" id="deck-view-zoom-in" class="deck-view-scale-btn" title="Zoom in (keyboard + or =)" aria-keyshortcuts="+ Shift+=">+</button>
+        <button type="button" id="deck-view-zoom-reset" class="deck-view-scale-btn" title="Reset view scale (keyboard 0)" aria-keyshortcuts="0">↺</button>
+      </span>
+      <span id="slide-counter" aria-live="polite" aria-atomic="true">1 / {{ total }}</span>
+      <form id="slide-goto-form" class="slide-goto-form" hidden>
+        <label for="slide-goto-input" class="visually-hidden">Go to slide number (1 to {{ total }})</label>
+        <input id="slide-goto-input" class="slide-goto-input" type="number" min="1" max="{{ total }}" step="1" inputmode="numeric" autocomplete="off" aria-label="Slide number, then press Enter" />
+      </form>
+      <button type="button" id="slide-goto-open" class="slide-goto-open" aria-expanded="false" aria-controls="slide-goto-form" title="Go to slide (keyboard: G)">#</button>
+    </nav>
+  </main>
+  <script>
+  (function() {
+    var deckRoot = document.getElementById('deck-app-root');
+    var slides = Array.from(document.querySelectorAll('#deck-app-root [role="group"]'));
+    var idx = 0;
+    var counter = document.getElementById('slide-counter');
+    var gotoForm = document.getElementById('slide-goto-form');
+    var gotoInput = document.getElementById('slide-goto-input');
+    var gotoOpen = document.getElementById('slide-goto-open');
+    var zoomOutBtn = document.getElementById('deck-view-zoom-out');
+    var zoomInBtn = document.getElementById('deck-view-zoom-in');
+    var zoomResetBtn = document.getElementById('deck-view-zoom-reset');
+    var scalePctEl = document.getElementById('deck-view-scale-pct');
+
+    var htmlEl = document.documentElement;
+    var defaultViewScale = parseFloat(htmlEl.getAttribute('data-deck-default-view-scale') || '1', 10);
+    if (!isFinite(defaultViewScale) || defaultViewScale <= 0) defaultViewScale = 1;
+    var rememberViewScale = htmlEl.getAttribute('data-deck-remember-view-scale') === 'true';
+    var VIEW_SCALE_LS = 'mdToYamlDeckViewScale';
+    var VIEW_SCALE_MIN = 0.25;
+    var VIEW_SCALE_MAX = 4;
+    var VIEW_SCALE_STEP = 1.1;
+
+    function clampViewScale(x) {
+      return Math.max(VIEW_SCALE_MIN, Math.min(VIEW_SCALE_MAX, x));
+    }
+
+    function parseViewScaleParam(raw) {
+      if (raw == null || raw === '') return null;
+      var s = String(raw).trim();
+      if (s.endsWith('%')) {
+        var n = parseFloat(s.slice(0, -1), 10);
+        return isFinite(n) ? n / 100 : null;
+      }
+      var f = parseFloat(s, 10);
+      return isFinite(f) ? f : null;
+    }
+
+    function readInitialViewScale() {
+      var params = new URLSearchParams(window.location.search);
+      var fromUrl = parseViewScaleParam(params.get('viewScale'));
+      if (fromUrl != null) return clampViewScale(fromUrl);
+      if (rememberViewScale) {
+        try {
+          var st = localStorage.getItem(VIEW_SCALE_LS);
+          if (st != null) {
+            var v = parseFloat(st, 10);
+            if (isFinite(v)) return clampViewScale(v);
+          }
+        } catch (err) {}
+      }
+      return clampViewScale(defaultViewScale);
+    }
+
+    var viewScale = readInitialViewScale();
+
+    function persistViewScale() {
+      if (!rememberViewScale) return;
+      try {
+        localStorage.setItem(VIEW_SCALE_LS, String(viewScale));
+      } catch (err) {}
+    }
+
+    function formatScalePct(x) {
+      return Math.round(x * 100) + '%';
+    }
+
+    function applyViewScale(next) {
+      viewScale = clampViewScale(next);
+      if (deckRoot) {
+        deckRoot.style.setProperty('--deck-view-scale', String(viewScale));
+      }
+      if (scalePctEl) scalePctEl.textContent = formatScalePct(viewScale);
+      persistViewScale();
+    }
+
+    applyViewScale(viewScale);
+
+    function bumpViewScale(factor) {
+      applyViewScale(viewScale * factor);
+    }
+
+    if (zoomOutBtn) zoomOutBtn.addEventListener('click', function() { bumpViewScale(1 / VIEW_SCALE_STEP); });
+    if (zoomInBtn) zoomInBtn.addEventListener('click', function() { bumpViewScale(VIEW_SCALE_STEP); });
+    if (zoomResetBtn) zoomResetBtn.addEventListener('click', function() { applyViewScale(defaultViewScale); });
+
+    function isTypingInField(el) {
+      if (!el || !el.tagName) return false;
+      var tag = el.tagName.toLowerCase();
+      if (tag === 'textarea') return true;
+      if (tag === 'input') {
+        var t = (el.type || '').toLowerCase();
+        if (t === 'button' || t === 'submit' || t === 'checkbox' || t === 'radio') return false;
+        return true;
+      }
+      return el.isContentEditable;
+    }
+
+    function openGoto() {
+      gotoForm.hidden = false;
+      gotoOpen.hidden = true;
+      gotoOpen.setAttribute('aria-expanded', 'true');
+      gotoInput.value = String(idx + 1);
+      gotoInput.focus();
+      gotoInput.select();
+    }
+
+    function closeGoto() {
+      gotoForm.hidden = true;
+      gotoOpen.hidden = false;
+      gotoOpen.setAttribute('aria-expanded', 'false');
+    }
+
+    function submitGoto() {
+      var n = parseInt(gotoInput.value, 10);
+      if (!isFinite(n)) return;
+      n = Math.max(1, Math.min(slides.length, n));
+      goTo(n - 1);
+      closeGoto();
+    }
+
+    // Keep idx in sync with the visible slide (handles find-in-page, direct scroll, etc.)
+    var observer = new IntersectionObserver(function(entries) {
+      entries.forEach(function(entry) {
+        if (entry.isIntersecting) {
+          idx = slides.indexOf(entry.target);
+          counter.textContent = (idx + 1) + ' / ' + slides.length;
+        }
+      });
+    }, { threshold: 0.5 });
+    slides.forEach(function(s) { observer.observe(s); });
+
+    function goTo(n) {
+      idx = Math.max(0, Math.min(n, slides.length - 1));
+      slides[idx].scrollIntoView({behavior: 'instant', block: 'start'});
+      counter.textContent = (idx + 1) + ' / ' + slides.length;
+    }
+
+    gotoOpen.addEventListener('click', function() { openGoto(); });
+
+    gotoForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+      submitGoto();
+    });
+
+    gotoInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeGoto();
+        gotoOpen.focus();
+      }
+    });
+
+    gotoInput.addEventListener('blur', function() {
+      window.setTimeout(function() {
+        if (document.activeElement === gotoInput) return;
+        if (!gotoForm.hidden) closeGoto();
+      }, 120);
+    });
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'g' || e.key === 'G') {
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        if (e.repeat) return;
+        if (isTypingInField(e.target) && e.target !== gotoInput) return;
+        e.preventDefault();
+        if (!gotoForm.hidden) {
+          closeGoto();
+          return;
+        }
+        openGoto();
+        return;
+      }
+
+      if (document.activeElement === gotoInput) return;
+
+      if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (e.key === '+' || e.key === '=') {
+          e.preventDefault();
+          bumpViewScale(VIEW_SCALE_STEP);
+          return;
+        }
+        if (e.key === '-' || e.key === '_') {
+          e.preventDefault();
+          bumpViewScale(1 / VIEW_SCALE_STEP);
+          return;
+        }
+        if (e.key === '0' && gotoForm.hidden) {
+          e.preventDefault();
+          applyViewScale(defaultViewScale);
+          return;
+        }
+      }
+
+      if (e.target.closest('[role="region"]')) return;
+
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') {
+        e.preventDefault(); goTo(idx + 1);
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        e.preventDefault(); goTo(idx - 1);
+      } else if (e.key === 'Home') {
+        e.preventDefault(); goTo(0);
+      } else if (e.key === 'End') {
+        e.preventDefault(); goTo(slides.length - 1);
+      }
+    });
+  })();
+  </script>
+  {% if has_mermaid %}
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.0/dist/mermaid.esm.min.mjs';
+    // Render Mermaid with 22pt node labels. Cells are auto-sized by Mermaid
+    // around this font, giving correctly-proportioned boxes out of the box.
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: '{{ mermaid_theme }}',
+	  useMaxWidth: false,
+	  fontSize: '22pt',
+	  fontFamily: "'{{ deck.metadata.font }}', sans-serif",
+      flowchart: { useMaxWidth: false, htmlLabels: true },
+      sequence: { useMaxWidth: false, htmlLabels: true },
+      timeline: { useMaxWidth: false },
+      gantt:    { useMaxWidth: false },
+      pie:      { useMaxWidth: false },
+      journey:  { useMaxWidth: false },
+      mindmap:  { useMaxWidth: false, htmlLabels: true },
+      quadrantChart: { useMaxWidth: false },
+      themeVariables: {
+        fontSize: '22pt',
+        fontFamily: "'{{ deck.metadata.font }}', sans-serif",
+      },
+    });
+    // Tag each diagram container with its Mermaid diagram type, read from the
+    // source text BEFORE mermaid.run() replaces the <pre> with rendered SVG.
+    // Also mark each container with data-mermaid-pre so we can select the
+    // rendered SVG after run() without relying on the SVG id prefix — Mermaid
+    // v11 uses different id schemes for different diagram types (mindmaps do
+    // NOT use the mermaid-* prefix), so svg[id^="mermaid"] misses them.
+    // Used later by pickSizer() — aria-roledescription on the rendered SVG is
+    // unreliable across Mermaid v11 diagram types (e.g. timeline).
+    document.querySelectorAll('.diagram-container pre.mermaid, .diagram-container .mermaid').forEach(pre => {
+      const src = (pre.textContent || '').trim();
+      // First non-empty, non-directive line; take its first token.
+      let type = '';
+      for (const raw of src.split('\n')) {
+        const line = raw.trim();
+        if (!line || line.startsWith('%%') || line.startsWith('---')) continue;
+        type = line.split(/[\s:({]/)[0].toLowerCase();
+        break;
+      }
+      const container = pre.closest('.diagram-container');
+      if (container) {
+        if (type) container.dataset.diagramType = type;
+        container.dataset.mermaidPre = '1';
+      }
+    });
+    await mermaid.run();
+    // Let layout settle so getBoundingClientRect reports accurate column widths.
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    // Font-size constraints: 20pt min, 24pt max, rendered natural = 22pt.
+    // Scaling the SVG scales font and cells together, so we clamp the scale
+    // factor to keep font within the allowed band.
+    const NATURAL_PT = 22, MIN_PT = 20, MAX_PT = 24;
+    const MIN_SCALE = MIN_PT / NATURAL_PT;   // 0.909 — smaller overflows
+    const MAX_SCALE = MAX_PT / NATURAL_PT;   // 1.091 — larger overblown
+
+    function sizeSvg(svg, availW, availH) {
+      const nW = parseFloat(svg.getAttribute('width'))
+              || (svg.viewBox && svg.viewBox.baseVal ? svg.viewBox.baseVal.width  : 0);
+      const nH = parseFloat(svg.getAttribute('height'))
+              || (svg.viewBox && svg.viewBox.baseVal ? svg.viewBox.baseVal.height : 0);
+      svg.removeAttribute('width');
+      svg.removeAttribute('height');
+      svg.removeAttribute('style');
+      svg.style.display = 'block';
+      svg.style.margin  = '0 auto';
+      if (nW <= 0 || nH <= 0 || availW <= 0 || availH <= 0) {
+        svg.style.width = '100%';
+        svg.style.height = 'auto';
+        return;
+      }
+      // Scale to fit the available box, clamped to the font-size band.
+      const fitScale = Math.min(availW / nW, availH / nH);
+      const scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, fitScale));
+      svg.style.width  = (nW * scale) + 'px';
+      svg.style.height = (nH * scale) + 'px';
+    }
+
+    // Fit-to-available for diagram types whose Mermaid renderer ignores
+    // themeVariables.fontSize (e.g. timeline, gantt, pie). For these the
+    // natural render size is arbitrary, so we scale to fill the panel
+    // without the 20–24pt clamp.
+    function sizeSvgFit(svg, availW, availH) {
+      // Prefer viewBox (true content geometry) over width/height attributes,
+      // which Mermaid may set to "100%" for some diagram types (timeline, etc.).
+      const vb = svg.viewBox && svg.viewBox.baseVal;
+      const vbW = (vb && vb.width  > 0) ? vb.width  : parseFloat(svg.getAttribute('width'))  || 0;
+      const vbH = (vb && vb.height > 0) ? vb.height : parseFloat(svg.getAttribute('height')) || 0;
+
+      // Mermaid v11+ (notably mindmap/sequence) can produce a viewBox with large
+      // whitespace margins. Fitting to viewBox then makes the *actual* content
+      // perceptually tiny. Use the rendered content bbox to choose the scale,
+      // but apply that scale to the full viewBox so we don't crop.
+      let contentW = vbW;
+      let contentH = vbH;
+      try {
+        const bb = svg.getBBox();
+        if (bb && bb.width > 0 && bb.height > 0) {
+          contentW = bb.width;
+          contentH = bb.height;
+        }
+      } catch (e) {
+        // getBBox may throw if fonts/layout aren't ready; fall back to viewBox.
+      }
+
+      svg.removeAttribute('width');
+      svg.removeAttribute('height');
+      svg.removeAttribute('style');
+      svg.style.display = 'block';
+      svg.style.margin  = '0 auto';
+      if (availW <= 0 || availH <= 0) return;
+
+      if (vbW <= 0 || vbH <= 0 || contentW <= 0 || contentH <= 0) {
+        svg.style.width  = availW + 'px';
+        svg.style.height = availH + 'px';
+        return;
+      }
+
+      const scale = Math.min(availW / contentW, availH / contentH);
+      svg.style.width  = (vbW * scale) + 'px';
+      svg.style.height = (vbH * scale) + 'px';
+    }
+
+    // Diagram types where Mermaid does not honor themeVariables.fontSize —
+    // use fit-to-space instead of the 20–24pt clamp. —
+    // use fit-to-space instead of the 20–24pt clamp.
+    const UNCLAMPED_TYPES = new Set([
+      'timeline', 'gantt', 'pie', 'quadrantchart', 'journey', 'mindmap',
+    ]);
+    // Timeline has a lot of vertical whitespace in its natural viewBox, so
+    // height-based fit ends up too small. Width-dominant fill gives a
+    // readable font without clipping meaningful content.
+    const WIDTH_FILL_TYPES = new Set(['timeline']);
+    function sizeSvgFillWidth(svg, availW, availH) {
+      svg.removeAttribute('width');
+      svg.removeAttribute('height');
+      svg.removeAttribute('style');
+      svg.style.display = 'block';
+      svg.style.margin  = '0 auto';
+      svg.style.width   = availW + 'px';
+      svg.style.height  = 'auto';
+      svg.style.maxHeight = availH + 'px';
+    }
+    function pickSizer(svg) {
+      const container = svg.closest('.diagram-container');
+      const type = (container && container.dataset.diagramType || '').toLowerCase();
+      const role = (svg.getAttribute('aria-roledescription') || '').toLowerCase();
+      if (WIDTH_FILL_TYPES.has(type) || WIDTH_FILL_TYPES.has(role)) return sizeSvgFillWidth;
+      return (UNCLAMPED_TYPES.has(type) || UNCLAMPED_TYPES.has(role)) ? sizeSvgFit : sizeSvg;
+    }
+
+    // Scoped to Mermaid-generated SVGs. We select by [data-mermaid-pre] (set
+    // above before mermaid.run()) rather than svg[id^="mermaid"] because
+    // Mermaid v11 uses different id schemes per diagram type — mindmaps in
+    // particular do NOT use the mermaid-* prefix.  File-based SVGs have
+    // author-controlled fonts and are left to render at natural width
+    // (width="100%" already applied by the Python SVG normalizer).
+    const SLIDE_PAD  = 96;   // 1in slide edge
+    const PANEL_INSET = 48;  // panel internal padding (top+bottom or left+right combined)
+    document.querySelectorAll('.slide-diagram .diagram-container[data-mermaid-pre] svg').forEach(svg => {
+      const slide   = svg.closest('section[role="group"]');
+      const titleBlock = slide && (slide.querySelector('header.slide-heading-stack') || slide.querySelector('h2'));
+      const titleH  = titleBlock ? titleBlock.getBoundingClientRect().height : 60;
+      const caption = slide && slide.querySelector('.diagram-caption');
+      const capH    = caption ? caption.getBoundingClientRect().height + 16 : 0;
+      const availW  = document.documentElement.clientWidth - SLIDE_PAD * 2 - PANEL_INSET;
+      const availH  = window.innerHeight - SLIDE_PAD * 2 - titleH - capH - PANEL_INSET;
+      pickSizer(svg)(svg, availW, availH);
+    });
+
+    // Two-column diagrams — constrained to the diagram column.
+    document.querySelectorAll('.slide-two-column .diagram-container[data-mermaid-pre] svg').forEach(svg => {
+      const slide  = svg.closest('section[role="group"]');
+      const titleBlock = slide && (slide.querySelector('header.slide-heading-stack') || slide.querySelector('h2'));
+      const titleH = titleBlock ? titleBlock.getBoundingClientRect().height : 60;
+      const container = svg.closest('.diagram-container');
+      // After RAF, getBoundingClientRect reflects the actual grid-sized column width.
+      const colW = container.getBoundingClientRect().width || (document.documentElement.clientWidth / 2);
+      const availW = colW - PANEL_INSET;
+      const availH = window.innerHeight - SLIDE_PAD * 2 - titleH - PANEL_INSET;
+      pickSizer(svg)(svg, availW, availH);
+    });
+
+    // layout: figure — Mermaid: do NOT use .figure-asset getBoundingClientRect (often ~0
+    // before layout); do NOT use pickSizer’s sizeSvg (20–24pt font band clamps large fits).
+    // Match the CSS max-width and max-height: calc(…vh * --figure-scale) caps.
+    const FIG_WRAP_INSET = 80;  // ~horizontal padding 2rem*2 + border
+    const FIG_V_PAD = 48;  // top/bottom padding slack inside wrap vs SVG box
+    document.querySelectorAll('.slide-figure .figure-asset .diagram-container[data-mermaid-pre] svg').forEach(svg => {
+      const section = svg.closest('section.slide-figure');
+      if (!section) return;
+      const isOnly = section.classList.contains('figure-only');
+      const wFrac = isOnly ? 0.95 : 0.88;  // match .figure-asset-wrap max-width caps
+      const vhFrac = isOnly ? 0.78 : 0.72;  // match img/svg max-height: calc(…vh * scale)
+      const raw = (getComputedStyle(section).getPropertyValue('--figure-scale') || '1').trim();
+      const fscale = Math.max(0.25, Math.min(4, parseFloat(raw) || 1));
+      const titleBlock = section.querySelector('header.slide-heading-stack') || section.querySelector('h2');
+      const titleBottom = titleBlock ? titleBlock.getBoundingClientRect().bottom : 0;
+      const maxBelowTitle = window.innerHeight - titleBottom - SLIDE_PAD;
+      const cw = document.documentElement.clientWidth - 2 * SLIDE_PAD;
+      const maxWrapW = Math.min(cw, cw * wFrac * fscale);
+      const availW = Math.max(40, maxWrapW - FIG_WRAP_INSET);
+      const fromVh = window.innerHeight * vhFrac * fscale;
+      const availH = Math.max(60, Math.min(fromVh, maxBelowTitle) - FIG_V_PAD);
+      sizeSvgFit(svg, availW, availH);
+    });
+
+    // Figure-wide: Mermaid in the flex panel — size to the wrap box (summary + footer
+    // already reduced the available region via flex layout).
+    const FW_INSET = 40;
+    document.querySelectorAll('.slide-figure-wide .figure-wide-figure-wrap .diagram-container[data-mermaid-pre] svg').forEach(svg => {
+      const wrap = svg.closest('.figure-wide-figure-wrap');
+      if (!wrap) return;
+      const b = wrap.getBoundingClientRect();
+      const fig = svg.closest('.figure-wide-figure');
+      const cap = fig && fig.querySelector('figcaption');
+      const capH = (cap && cap.getBoundingClientRect().height) || 0;
+      const gap  = cap ? 12 : 0;
+      const availW = Math.max(40, b.width - FW_INSET);
+      const availH = Math.max(60, b.height - FW_INSET - capH - gap);
+      pickSizer(svg)(svg, availW, availH);
+    });
+  </script>
+  {% endif %}
+
+{% if has_bullet_animation %}
+<script src="{{ gsap_script_url | e }}"></script>
+<script>
+(function () {
+  if (!window.gsap) return;
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  document.querySelectorAll('[data-bullet-stagger]').forEach(function (section) {
+    var raw = section.getAttribute('data-bullet-stagger');
+    if (!raw) return;
+    var cfg;
+    try { cfg = JSON.parse(raw); } catch (e) { return; }
+    var items = section.querySelectorAll('.slide-body li');
+    if (!items.length) return;
+    if (reduce) {
+      gsap.set(items, { clearProps: 'all' });
+      return;
+    }
+    var x0 = typeof cfg.x_offset === 'number' ? cfg.x_offset : -24;
+    gsap.set(items, { opacity: 0, x: x0 });
+    var thr = typeof cfg.threshold === 'number' ? cfg.threshold : 0.45;
+    var observer = new IntersectionObserver(function (entries, obs) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        obs.disconnect();
+        gsap.to(items, {
+          opacity: 1,
+          x: 0,
+          duration: typeof cfg.duration === 'number' ? cfg.duration : 0.45,
+          ease: cfg.ease || 'power2.out',
+          stagger: typeof cfg.stagger === 'number' ? cfg.stagger : 0.12
+        });
+      });
+    }, { threshold: thr });
+    observer.observe(section);
+  });
+
+  // Key-driven bullet focus: dim all but the currently focused bullet; configured key advances focus.
+  var focusSections = Array.prototype.slice.call(
+    document.querySelectorAll('[data-bullet-focus]')
+  );
+  if (!focusSections.length) return;
+
+  var states = new Map();   // section -> { items, idx, dim, dur, ease, key }
+  var visible = new Set();  // sections currently in view
+
+  focusSections.forEach(function (section) {
+    var raw = section.getAttribute('data-bullet-focus');
+    var cfg;
+    try { cfg = JSON.parse(raw); } catch (e) { return; }
+    var items = section.querySelectorAll('.slide-body li');
+    if (!items.length) return;
+    var dim = typeof cfg.dim === 'number' ? cfg.dim : 0.25;
+    var state = {
+      items: items,
+      idx: 0,
+      dim: dim,
+      dur: typeof cfg.duration === 'number' ? cfg.duration : 0.3,
+      ease: cfg.ease || 'power2.out',
+      key: (cfg.key || 'j').toLowerCase(),
+      backKey: (cfg.back_key || 'k').toLowerCase()
+    };
+    states.set(section, state);
+    if (reduce) {
+      gsap.set(items, { opacity: 1 });
+      return;
+    }
+    gsap.set(items, { opacity: dim });
+    gsap.set(items[0], { opacity: 1 });
+  });
+
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (entry.isIntersecting) visible.add(entry.target);
+      else visible.delete(entry.target);
+    });
+  }, { threshold: 0.5 });
+  focusSections.forEach(function (s) { io.observe(s); });
+
+  function activeSection() {
+    if (visible.size === 1) return visible.values().next().value;
+    var best = null, bestArea = 0;
+    visible.forEach(function (s) {
+      var r = s.getBoundingClientRect();
+      var a = Math.max(0, r.width) * Math.max(0, r.height);
+      if (a > bestArea) { bestArea = a; best = s; }
+    });
+    return best;
+  }
+
+  document.addEventListener('keydown', function (ev) {
+    if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    var tag = (ev.target && ev.target.tagName) || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || (ev.target && ev.target.isContentEditable)) return;
+    var section = activeSection();
+    if (!section) return;
+    var st = states.get(section);
+    if (!st) return;
+    var k = ev.key.toLowerCase();
+    var dir = 0;
+    if (k === st.key) dir = 1;
+    else if (k === st.backKey) dir = -1;
+    else return;
+    ev.preventDefault();
+    var newIdx = st.idx + dir;
+    if (newIdx < 0 || newIdx > st.items.length - 1) return;
+    var prev = st.items[st.idx];
+    st.idx = newIdx;
+    var next = st.items[st.idx];
+    if (reduce) {
+      gsap.set([prev, next], { opacity: 1 });
+      return;
+    }
+    gsap.to(prev, { opacity: st.dim, duration: st.dur, ease: st.ease });
+    gsap.to(next, { opacity: 1, duration: st.dur, ease: st.ease });
+  });
+})();
+</script>
+{% endif %}
+
+</body>
+</html>
