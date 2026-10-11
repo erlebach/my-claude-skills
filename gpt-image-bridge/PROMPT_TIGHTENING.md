@@ -26,6 +26,28 @@ The agent now copies the prompt unchanged, so that tightening is the prompt writ
 enough under Astra: images made through it also needed redraws for invented text and a correct design
 drawn in red.
 
+## Start from OpenAI's prompt structure
+
+The guide Astra read (`~/.codex/skills/.system/imagegen/`, see `SKILL.md`) asks for short labelled lines
+in a fixed order, scene → subject → details → constraints, exact text quoted, nothing added that the
+request does not imply. Use its fields and put the rules below inside them:
+
+```text
+Use case: scientific-educational
+Asset type: figure in a course web page, one Use Cases tab
+Primary request: <one sentence: what the figure must show>
+Style/medium: clean flat vector infographic, white background, crisp monospace font for code
+Composition/framing: EXACTLY <n> panels with numbered headers; <which panels side by side, which below>
+Panel 1 (<colour>, <mark or none>) "<header>": <every element, each with its exact quoted text or "no text">
+Panel 2 …
+Text (verbatim): "<title>", "<header 1>", … every string in the figure
+Constraints: every label real, correctly spelled English; code spelled character for character as quoted
+Avoid: any text, code, numbers, logos or characters not listed above
+```
+
+Then end with the STRICT line. The panel lines carry this file's rules; the labelled fields carry the
+guide's.
+
 ## Rules
 
 1. **Give every region its exact text, or say it has none.** A box, card, window, terminal, chat
