@@ -1,0 +1,223 @@
+#!/usr/bin/env bash
+# Generate an image via Codex's image_generation tool (GPT Image 2.5).
+# Codex selects the image backend; this wrapper does not pin a model.
+# The gpt-image-2 executable name is retained for existing callers.
+# Uses the logged-in ChatGPT subscription — no API key required.
+#
+# Usage: gpt-image-2 "<prompt>" <output.png> [--size WxH] [--agent luna|terra|sol]
+#
+# If --size is omitted, the model picks its own dimensions.
+# --agent picks the Codex model that carries the prompt to the image tool, at
+# medium effort: luna (default, gpt-6-luna), terra (gpt-5.6-terra: there is no
+# gpt-6 terra), sol (gpt-6-sol). The agent does not draw; it only calls the tool.
+# After the call, the wrapper reads Codex's session log and checks that the
+# image tool received the prompt word for word, once. If not, it exits 3 and
+# copies nothing, so a caller retries instead of keeping an image drawn from a
+# shortened prompt.
+# Works on macOS, Linux, and Windows (Git Bash or WSL).
+
+set -euo pipefail
+
+if [[ $# -lt 2 ]]; then
+  echo "usage: gpt-image-2 \"<prompt>\" <output.png> [--size WxH] [--agent luna|terra|sol]" >&2
+  exit 2
+fi
+
+prompt="$1"
+out="$2"
+shift 2
+
+size=""
+agent="${GPT_IMAGE_AGENT:-luna}"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --size) size="$2"; shift 2 ;;
+    --agent) agent="$2"; shift 2 ;;
+    *) echo "gpt-image-2: unknown arg: $1" >&2; exit 2 ;;
+  esac
+done
+
+if ! command -v codex >/dev/null 2>&1; then
+  echo "gpt-image-2: codex CLI not found on PATH. Install it ('brew install codex' or 'npm install -g @openai/codex') and run 'codex login'." >&2
+  exit 127
+fi
+
+out_dir="$(cd "$(dirname "$out")" 2>/dev/null && pwd)" || {
+  echo "gpt-image-2: output dir does not exist: $(dirname "$out")" >&2
+  exit 2
+}
+out="$out_dir/$(basename "$out")"
+
+size_line=""
+if [[ -n "$size" ]]; then
+  size_line="
+SIZE: ${size}"
+fi
+
+# Codex runs under a workspace-write sandbox: it can only write inside its own
+# working directory, so it must not be handed the final output path (which may
+# be outside the workspace, or in a path format its shell doesn't parse).
+# Instead it saves the image into a private temp workdir and the wrapper does
+# the final copy, which no sandbox restricts.
+workdir="$(mktemp -d "${TMPDIR:-/tmp}/gpt-image-2.XXXXXX")"
+# The log lives beside the workdir, not inside it: background scanners can pin
+# an open log file on Windows, and that must not block removing the workdir.
+log="${workdir}.log"
+
+# On Windows (Git Bash), codex is a native binary that can't resolve POSIX
+# paths like /tmp/... — hand it a C:/-style path instead.
+codex_workdir="$workdir"
+if command -v cygpath >/dev/null 2>&1; then
+  codex_workdir="$(cygpath -m "$workdir")"
+fi
+
+full_prompt="Use your image_generation tool to create an image.
+
+The prompt is every line between BEGIN PROMPT and END PROMPT, those two marker lines excluded.
+
+BEGIN PROMPT
+${prompt}${size_line}
+END PROMPT
+
+Requirements:
+- You MUST call the image_generation tool exactly once. Pass it the prompt between the markers character for character: nothing removed, nothing shortened or reworded, and nothing added (not these requirements, not the markers).
+- Do NOT write a Python script, shell out to curl, or fabricate a PNG any other way.
+- After the tool produces the image, save the PNG as out.png in your current working directory. Use the relative path out.png, not an absolute path.
+- Reply with only the file name of the saved PNG, nothing else."
+
+# The agent model for the Codex turn. On paid credits the default Codex model cost
+# ~20 credits an image and luna ~0.1 (2026-10-10), so luna is the default.
+# GPT_IMAGE_AGENT_MODEL (a raw model ID) still overrides, for existing callers.
+case "$agent" in
+  luna)  agent_model=gpt-6-luna ;;
+  terra) agent_model=gpt-5.6-terra ;;
+  sol)   agent_model=gpt-6-sol ;;
+  *) echo "gpt-image-2: --agent must be luna, terra or sol (got: $agent)" >&2; exit 2 ;;
+esac
+agent_model="${GPT_IMAGE_AGENT_MODEL:-$agent_model}"
+agent_args=(-m "$agent_model" -c "model_reasoning_effort=${GPT_IMAGE_AGENT_EFFORT:-medium}")
+
+if ! codex exec --json --skip-git-repo-check -s workspace-write ${agent_args[@]+"${agent_args[@]}"} -C "$codex_workdir" "$full_prompt" </dev/null >"$log" 2>&1; then
+  echo "gpt-image-2: codex exec failed. Last 30 lines of log:" >&2
+  tail -n 30 "$log" >&2
+  echo "(full log: $log)" >&2
+  exit 1
+fi
+
+img="$workdir/out.png"
+if [[ ! -f "$img" ]]; then
+  # Codex occasionally picks its own file name; fall back to the newest PNG.
+  img="$(ls -t "$workdir"/*.png 2>/dev/null | head -n 1 || true)"
+fi
+
+if [[ -z "$img" || ! -f "$img" ]]; then
+  # The agent sometimes generates the image and never saves it (seen with gpt-6-luna,
+  # 2026-10-10). Codex keeps every generated image per thread; take the newest one.
+  thread="$(grep -o '"thread_id":"[^"]*"' "$log" | head -n 1 | cut -d'"' -f4)"
+  [[ -n "$thread" ]] && img="$(ls -t "$HOME/.codex/generated_images/$thread"/*.png 2>/dev/null | head -n 1 || true)"
+fi
+
+if [[ -z "$img" || ! -f "$img" ]]; then
+  echo "gpt-image-2: codex finished but produced no PNG in $workdir. Last 30 lines of log:" >&2
+  tail -n 30 "$log" >&2
+  echo "(full log: $log)" >&2
+  exit 1
+fi
+
+# Check that the image tool got the whole prompt. Codex logs each turn in
+# ~/.codex/sessions/.../rollout-*-<thread>.jsonl, including the code the agent
+# ran to call image_gen.imagegen; the prompt it passed is a string in that code.
+thread="$(grep -o '"thread_id":"[^"]*"' "$log" | head -n 1 | cut -d'"' -f4)"
+rollout="$(find "$HOME/.codex/sessions" -name "rollout-*${thread}.jsonl" 2>/dev/null | head -n 1)"
+if ! python3 -I - "$rollout" "$prompt${size_line}" >&2 <<'PY'
+import json, re, sys
+path, want = sys.argv[1], sys.argv[2]
+norm = lambda s: " ".join(s.split())
+def strings(code):
+    # every JS string literal in the code ('...', "...", `...`), unescaped
+    out, i = [], 0
+    while i < len(code):
+        q = code[i]
+        if q in "'\"`":
+            j, buf = i + 1, []
+            while j < len(code) and code[j] != q:
+                if code[j] == "\\" and j + 1 < len(code):
+                    nxt = code[j + 1]; buf.append({"n": "\n", "t": "\t"}.get(nxt, nxt)); j += 2
+                else:
+                    buf.append(code[j]); j += 1
+            out.append("".join(buf)); i = j + 1
+        else:
+            i += 1
+    return out
+if not path:
+    print("gpt-image-2: prompt check: no Codex session log found"); sys.exit(1)
+calls, texts = 0, []
+for line in open(path, errors="replace"):
+    try:
+        p = json.loads(line).get("payload", {})
+    except ValueError:
+        continue
+    code = p.get("input") or p.get("arguments") or ""
+    if p.get("type") in ("custom_tool_call", "function_call") and isinstance(code, str):
+        n = len(re.findall(r"image_gen(?:__|\.)imagegen\s*\(", code))
+        if n:
+            calls += n
+            texts += [s for s in strings(code) if len(s) > 40]
+w = norm(want)
+exact = [t for t in texts if norm(t) == w]
+print(f"gpt-image-2: prompt check: {calls} image call(s); prompt {'passed word for word' if exact else 'NOT passed word for word'}")
+if calls != 1 or not exact:
+    for t in texts:
+        a = norm(t)
+        if w in a:
+            print(f"  sent the whole prompt plus {len(a) - len(w)} extra characters")
+        else:
+            k = next((i for i, (x, y) in enumerate(zip(a, w)) if x != y), min(len(a), len(w)))
+            print(f"  sent {len(a)} of {len(w)} characters; first difference at {k}: ...{a[max(0,k-40):k+40]!r}")
+    sys.exit(1)
+PY
+then
+  echo "gpt-image-2: the image tool did not receive the prompt word for word, exactly once; no image copied (log: $log, session: $rollout)" >&2
+  exit 3
+fi
+
+cp "$img" "$out"
+
+# Token usage (--json events). Summed over every turn.completed event; printed to
+# stderr so stdout stays the output path, appended to usage.csv, and the raw
+# JSONL is kept in logs/ (it holds the prompt Codex actually sent to the tool).
+skill_dir="$(cd "$(dirname "$0")/.." && pwd)"
+mkdir -p "$skill_dir/logs"
+keep="$skill_dir/logs/$(date +%Y-%m-%d_%Hh%Mm%S)_$(basename "$out" .png).jsonl"
+cp "$log" "$keep" 2>/dev/null || true
+python3 -I - "$log" "$out" "$skill_dir/usage.csv" >&2 <<'PY' || true
+import json, sys, os, datetime
+log, out, csv = sys.argv[1:4]
+u = {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0, "reasoning_output_tokens": 0}
+for line in open(log, errors="replace"):
+    if not line.startswith("{"):
+        continue
+    try:
+        ev = json.loads(line)
+    except ValueError:
+        continue
+    if ev.get("type") == "turn.completed":
+        for k, v in (ev.get("usage") or {}).items():
+            if isinstance(v, int):
+                u[k] = u.get(k, 0) + v
+total = u["input_tokens"] + u["output_tokens"]
+print(f"gpt-image-2 usage: input={u['input_tokens']} (cached {u['cached_input_tokens']}) "
+      f"output={u['output_tokens']} (reasoning {u['reasoning_output_tokens']}) total={total}")
+new = not os.path.exists(csv)
+with open(csv, "a") as f:
+    if new:
+        f.write("time,file,input,cached_input,output,reasoning_output,total\n")
+    f.write(f"{datetime.datetime.now():%Y-%m-%d %H:%M:%S},{os.path.basename(out)},"
+            f"{u['input_tokens']},{u['cached_input_tokens']},{u['output_tokens']},"
+            f"{u['reasoning_output_tokens']},{total}\n")
+PY
+
+# Cleanup is best-effort: a pinned temp file must never turn a successful
+# generation into a reported failure.
+rm -rf "$workdir" "$log" 2>/dev/null || true
+echo "$out"

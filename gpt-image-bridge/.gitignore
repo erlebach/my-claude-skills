@@ -1,0 +1,5 @@
+logs/
+usage.csv
+bin/*.bak*
+bin/*.orig
+bin/*.new
