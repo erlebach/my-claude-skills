@@ -33,9 +33,31 @@ Do **not** invoke it for:
 - **Agent** — the Codex model that carries the prompt to the image tool, always at medium effort. It does not draw; it only calls the tool and saves the file. `luna` (`gpt-6-luna`) is the **default**; `terra` is `gpt-5.6-terra` (Codex has no gpt-6 Terra); `sol` is `gpt-6-sol`. Also settable as `GPT_IMAGE_AGENT=terra`. On paid credits the agent's turn is billed too: the default Codex model cost ~20 credits an image, luna ~0.1 (2026-10-10). Raw override for old callers: `GPT_IMAGE_AGENT_MODEL=<model id>`, `GPT_IMAGE_AGENT_EFFORT=<effort>`.
 - **The full prompt reaches the image tool, or nothing is kept.** The prompt goes to Codex between `BEGIN PROMPT` / `END PROMPT` lines. After the call the wrapper reads Codex's session log (`~/.codex/sessions/.../rollout-*-<thread>.jsonl`), finds the call to `image_gen.imagegen`, and checks that it was made exactly once with the prompt word for word. If the agent shortened it, reworded it, added to it (luna has appended the wrapper's own instructions, 411 characters), or called the tool twice, the wrapper prints how the sent text differs and **exits 3 without copying an image**. Treat exit 3 like any failed call: run it again.
 
-- **Prompt** should be dense and art-directed: composition, lighting, camera/lens, mood, style reference. Terse prompts produce generic output.
+- **Prompt** should be specific. For photos and illustrations: composition, lighting, camera/lens, mood, style reference. For diagrams and figures with text: the structure below and `PROMPT_TIGHTENING.md`. Terse prompts produce generic output.
 - **Before writing any prompt, read OpenAI's own prompting guide for this image model**, which Codex ships: `~/.codex/skills/.system/imagegen/SKILL.md` (sections *Prompt augmentation*, *Shared prompt schema*, *Prompting best practices*) and `~/.codex/skills/.system/imagegen/references/prompting.md` (with recipes in `references/sample-prompts.md`). Until 2026-10-10 the Codex agent `gpt-6-astra` read this guide on every call and rewrote our prompts to follow it. The agent now passes the prompt unchanged, so Claude must write it that way: short labelled lines (`Use case:`, `Text (verbatim):`, `Constraints:`, `Avoid:` …), the use case named (`scientific-educational` or `infographic-diagram` for course figures), exact text quoted. Read it from that path rather than from memory; it changes with Codex releases.
 - **For diagrams, infographics and any figure with text in it, also read [`PROMPT_TIGHTENING.md`](PROMPT_TIGHTENING.md) before writing the prompt.** The prompt reaches the image model unedited, and the image model fills every box the prompt leaves open with invented text, code or numbers. That file gives the rules, the closing STRICT line, and before/after fixes that worked.
+
+### Precedence: this skill over Codex's guide
+
+Codex's guide is written for the Codex agent. Use it only for **how to word a prompt**. Where it and this
+skill differ, **this skill (`SKILL.md`, then `PROMPT_TIGHTENING.md`) wins**. Do not edit Codex's files. Known
+differences:
+
+- **Execution.** Ignore the guide's modes, CLI fallback, `$CODEX_HOME` save paths, `view_image` and its
+  reporting steps. The wrapper runs the call and saves the file.
+- **When to use.** The guide says simple diagrams are better drawn in SVG or HTML. When the author asks
+  for a generated figure, generate it.
+- **Length of the prompt.** The guide says keep it short and normalize a detailed prompt rather than add
+  to it. For figures with text, pin every region and add the STRICT line, even though the prompt gets
+  longer: that is what stops invented text.
+- **Layout.** The guide says avoid left/right placement unless the request supports it. State the layout
+  and where each label sits (`PROMPT_TIGHTENING.md` rules 8 and 12).
+- **Asking the user.** The guide says ask when a critical detail is missing. Do not ask: fix the prompt
+  and redraw, at most three draws, and report only if all three fail.
+- **Fixing an image.** The guide iterates by editing the image. The wrapper only makes new draws, so fix
+  the prompt and draw again, changing only the faulty panels.
+- **Overwriting.** The guide says never overwrite an asset; save a versioned copy instead. A published
+  figure keeps its file name, because the page links to it; save the previous version before replacing it.
 - **Output path** must be absolute. `/tmp/` works for throwaways; a project-local `design/` directory for kept assets.
 - **Size is optional** — if omitted, the model chooses its own dimensions. Only pass `--size` when the user specifies one or the layout requires a particular aspect ratio.
 - A call takes about 50 s with luna (measured 2026-10-10: ~5 s for the agent to find the image tool and call it, ~30 s for the image model to draw, ~12 s to save the file). The agent does no work on the picture: it locates `image_gen.imagegen`, passes the prompt, and saves the PNG. A call can still hang when OpenAI is unreachable, so set the `Bash` tool timeout to the **maximum, 600000 ms**, or run it in the background.
@@ -49,7 +71,7 @@ After the wrapper returns, `Read` the PNG and compare it with the prompt, item b
   - *Is everything asked for there?* Tick off each quoted string and each required element of the prompt. A label can vanish, especially one the prompt described rather than quoted, or one near a panel you just changed.
   - *Is anything there that was not asked for?* Text, code, numbers, logos or characters the prompt did not give: the image model fills loosely described boxes with plausible inventions. Check spelling, doubled words, and characters that can be misread (0 and O, 1 and l).
   - *Does the picture mean what the page says?* Counts (count them, cropping and measuring where needed); charts and axes against their own labels; the direction of every arrow (what points to what, what flows where); who speaks; and colour. Colour carries meaning: the recommended practice is green, a trap is amber or red, and neutral information is neither. Different ideas side by side get different neutral colours, and one idea keeps one colour, or the reader will merge or split them wrongly.
-- **Compare with the previous draw**, not only with the prompt: a fix to one panel can undo something another panel had right.
+- **Compare with the previous draw of the same loop**, not only with the prompt: a fix to one panel can undo something another panel had right. A fault is always something the prompt or the page requires; an older published version is not a reference, and in general there is none to compare with.
 - **Redraw** when the image states something false or invented. First fix the prompt — pin the exact text of the loose box, or say it holds only plain grey bars or no text; see the examples in [`PROMPT_TIGHTENING.md`](PROMPT_TIGHTENING.md) — then generate again. On luna a redraw costs ~0.1 credits, so prefer it.
 - **Caption** (write the caption or alt text yourself) when the image is true but rough, or when it leaves out something the page says.
 - An empty (0-byte) PNG, or exit 3, is a failed call: run it again. A failed call is not a draw.
