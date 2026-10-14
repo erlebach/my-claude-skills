@@ -95,8 +95,9 @@ content_scale: 0.9          #    overrides the deck value on THIS slide only
 - body goes below the closing ---
 ```
 
-**Deck block only** — 16 keys. `theme` · `font` · `date` · `flavor` · `accent_color` ·
+**Deck block only** — 19 keys. `theme` · `font` · `date` · `flavor` · `accent_color` ·
 `title_font_size` · `title_top_margin` · `view_scale` · `remember_view_scale` ·
+`autofit_floor` · `autofit_widen_max` · `autofit_title_floor` ·
 `footer_scale` · `footer_inset` · `macros` · `bake_mermaid` · `figure_layout_debug` ·
 `animation_defaults` · `gsap_script_url`
 
@@ -104,7 +105,7 @@ content_scale: 0.9          #    overrides the deck value on THIS slide only
 `mermaid_scale` · `mermaid_scale_mode`
 
 **Both blocks** — set once on the deck, override on any slide: `title_scale` ·
-`content_scale` · `math_display_scale` · `math_display_center` · `math_display_color` ·
+`content_scale` · `blockquote_scale` · `math_display_scale` · `math_display_center` · `math_display_color` ·
 `figure_scale`. **A slide value replaces the deck value; it does not multiply.**
 `title` and `author` also appear in both, but they are different things — the deck's
 title and author, versus this slide's.

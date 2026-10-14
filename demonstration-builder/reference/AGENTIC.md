@@ -174,9 +174,13 @@ Conventions students see, proven across the series:
   against the engine's stable baked-panel ids (`<bakekey>-ccp`). Pin the ids AND the
   rules with a module test so an engine rename fails loudly. Browsers without
   `:has()` degrade to the stacked layout — acceptable.
-- **❌/✅ glyph grammar** carries over from the C++ series (SKILL.md Step 2): the
-  contrast pair is usually `❌ vague/ungrounded/unverified` vs `✅ pinned/grounded/
-  verified`.
+- **Glyph grammar** carries over from the C++ series (SKILL.md Step 2) with one
+  caveat the author has not yet ruled on: there, the glyph reports what the compiler
+  and the run did. On an agentic page the contrast pair usually marks the **prompt**
+  (`⚠️ vague/ungrounded/unverified` vs `✅ pinned/grounded/verified`), which is a
+  different axis — several vague-prompt arms print `PASS` on every line, so nothing
+  about their build is amber. Until that is settled, keep the glyph consistent with
+  the tab's badge and put the judgement of the prompt in the label, in words.
 
 ## 6. Harvest discipline
 

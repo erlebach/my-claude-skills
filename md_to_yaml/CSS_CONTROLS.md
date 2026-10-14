@@ -18,7 +18,8 @@ Two scopes:
 | Key | Scope | Range | Default | Effect |
 |---|---|---|---|---|
 | `title_scale` | deck + slide | 0.75 – 4.0 | `1.0` | Heading band: slide titles and subtitles. Emitted as `--title-scale`. |
-| `content_scale` | deck + slide | 0.75 – 4.0 | `1.0` | Body band: bullets, prose, code, captions, tables. Emitted as `--content-scale`. |
+| `content_scale` | deck + slide | 0.25 – 4.0 | `1.0` | Body band: bullets, prose, code, captions, tables. Emitted as `--content-scale`. Code is `20px × 1.35 × content_scale`, so values below ~0.75 go under the 20px ADA floor — deliberate, and yours to judge. |
+| `blockquote_scale` | deck + slide | 0.25 – 4.0 | `1.0` | `>` blockquotes only, **on top of** `content_scale`. A blockquote is 44px against 28px body, so `0.64` makes it body-sized. Emitted as `--blockquote-scale`. A large quote is the usual reason a `content` slide overflows and is shrunk by the autofit; this key lets the quote come down while the prose around it stays up. |
 | `title_font_size` | deck | — | `2.4rem` | Base title size the scale multiplies. Any CSS length. |
 | `title_top_margin` | deck | — | `0.5rem` | Space above the title. Any CSS length. |
 
@@ -81,6 +82,43 @@ graph LR
 
 `view_scale` is the one to reach for when a deck is projected in a large room: it scales
 content inside the page, so the layout still reflows correctly, unlike browser zoom.
+
+## Autofit
+
+A slide whose content does not fit the 1280×720 canvas is shrunk at view time by
+`autofitAll()` in the compiled deck. Title and content are fitted **separately**: the title
+keeps its declared size (`title_scale`) and is shrunk only if it does not fit one line; the
+content area is zoomed to the largest value at which it fits the height the title leaves.
+A slide that fits is not touched. These three deck keys bound that process; they are
+written to `<html data-deck-autofit-*>` and read by the deck's JavaScript.
+
+| Key | Scope | Range | Default | Effect |
+|---|---|---|---|---|
+| `autofit_floor` | deck | 0.25 – 1.0 | `0.5` | Smallest zoom applied to the content area. Below it the content is left at the floor, starts under the title, and the section scrolls; the slide is reported in the browser console and by `check_autofit.py`. Raise it to be told sooner that a slide is over-full; lower it to let dense slides shrink further. |
+| `autofit_widen_max` | deck | 1.0 – 3.0 | `1.6` | How much wider than the canvas the content area may become while shrinking, so text re-wraps into fewer lines. Bounds line length: at 1.6 the longest line is about 90 characters. `1.0` never widens — a wide table then cannot fit at any zoom. |
+| `autofit_title_floor` | deck | 0.5 – 1.0 | `0.8` | Smallest zoom applied to a title that does not fit on one line. A title that still does not fit at the floor takes two lines at full size instead. |
+
+The lever that matters most is not here: **`title_scale`**. The reserved title band costs
+the content its height on every slide, so a deck whose bodies come out small is usually a
+deck whose title is too large, not one whose floor is too high. `title_scale: 0.8` on the
+deck gives uniform 69 px titles (at the default `--font-scale` 1.35) and 6–13 % larger
+bodies on the slides that were being shrunk.
+
+```yaml
+---
+title: The AI contract
+theme: dark
+title_scale: 0.8          # uniform 69px titles, more height for the content
+autofit_floor: 0.5        # defaults shown; omit any you do not want to change
+autofit_widen_max: 1.6
+autofit_title_floor: 0.8
+---
+```
+
+**Check a compiled deck:** `python3 check_autofit.py deck.html` (skill root; needs
+`playwright` with Chromium) prints the zoom applied to every slide, the rendered title
+size, and `FLOOR` on any slide that did not fit. Exit status 1 if one did. That is the
+signal to split the slide; the autofit will not hide it.
 
 ## Debugging
 

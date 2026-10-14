@@ -172,13 +172,17 @@ controls:
 - No dropdown → exactly one variant.
 - The human tab label = dropdown values joined with `" / "`.
 
-### Tab-label glyphs (correct vs mistake)
-When an example has a **mistake** variant, prefix `✅ ` / `❌ ` to **every** option label of
-that example (✅ = correct/recommended, ❌ = the mistake — failing at compile, link, *or*
-runtime; the glyph is the pedagogical verdict, not the compile outcome). Put the glyph in
-both the `options:` entry and its matching `value_map:` key (and `default:` if it names
-that option) — they must stay byte-identical. All-valid examples (different types/sizes/
-counts, or a pure mechanism contrast) stay unglyphed. Full rule: SKILL.md Step 2.
+### Tab-label glyphs (the glyph reports the build)
+When an example has a **mistake** variant, prefix a glyph to **every** option label of that
+example. The glyph reports what the compiler and the run did, never whether the code is
+good practice: `✅` compiles and runs as intended, `✅⚠️` the same but the page disapproves,
+`⚠️` compiles and runs with a wrong or misleading result, `❌` does not compile, `💥`
+compiles then crashes. It must agree with the badge below it. The label must not repeat it
+— `❌ non-mutable`, not `❌ non-mutable (compile error)`. Put the glyph in both the
+`options:` entry and its matching `value_map:` key (and `default:` if it names that
+option) — they must stay byte-identical. All-valid examples (different types/sizes/counts,
+or a pure mechanism contrast) stay unglyphed, but never glyph only some tabs of one
+dropdown. Full rule: SKILL.md Step 2.
 
 ### DRY the labels with YAML anchors (recommended)
 

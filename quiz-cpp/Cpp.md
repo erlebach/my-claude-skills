@@ -22,11 +22,11 @@ Modern C++: classes, functions, pointers and memory, concurrency, data structure
 
 Generate the tiers in the stated proportion and **label each item's tier** in the instructor key, since the weights depend on it.
 
-**Print the point value on the student version** — `1. (3 points) …` — and state the total and the full-credit threshold in the header. Students need the weights to budget 15 minutes rationally, and printing them is safe *because* the allowance is point-based: skipping an L3 item consumes the entire grace, so the weights create no skip-the-hard-ones strategy. **Never print the tier label** (`L1`/`L2`/`L3`) on the student version — it adds nothing the point value doesn't and invites "L3 = skip it". Tier labels stay in `key.md`.
+**Print the point value on every stem of `quiz.md`** — `1. (3 points) …` — and state the total and the full-credit threshold in the header. Students need the weights to budget 15 minutes rationally, and printing them is safe *because* the allowance is point-based: skipping an L3 item consumes the entire grace, so the weights create no skip-the-hard-ones strategy. **Never print the tier label** (`L1`/`L2`/`L3`) in `quiz.md` — it adds nothing the point value doesn't and invites "L3 = skip it". Tier labels stay in `key.md`.
 
 ## Difficulty: err hard
 
-A quiz that proves too hard is curved upward afterwards; one that proves too easy cannot be curved down. The correction is one-directional, so pitch high. This is also why L3 items are affordable — a missed trace costs the grace, not the grade.
+**Unless the author names a difficulty for this quiz** — "medium", say — in which case that request wins: it is passed as the pipeline's `difficulty` argument, which every generator and regenerator receives. Otherwise: a quiz that proves too hard is curved upward afterwards; one that proves too easy cannot be curved down. The correction is one-directional, so pitch high. This is also why L3 items are affordable — a missed trace costs the grace, not the grade.
 
 ## Scope
 
@@ -51,7 +51,7 @@ One undefined program, two inputs — one crashes, one prints a clean, correct-l
 
 This is the course's thesis in miniature: passing on the input you happened to try is not evidence. It tests the rule rather than a remembered outcome, and it cannot be answered by pattern-matching.
 
-The built ❌ demo variants are the natural stem source — `pointers_basic`'s dangling return, `class_structure`'s shallow copy, `stl`'s erase-in-loop, `ag_grounding`'s invented API, `ag_context`'s conflicting instructions. Their behavior is machine-verified, so the ❌ program *is* the answer key.
+The built ❌ demo variants are the natural stem source — `pointers_basic`'s dangling return, `class_structure`'s shallow copy, `stl`'s erase-in-loop, `ag_grounding`'s invented API, `ag_context`'s conflicting instructions. Their behavior is machine-verified, which tells you the item is worth asking about — the key still comes from the rule (see below). The stem reproduces the code it needs, as a program or a fragment: the item must be answerable by a student who never saw the demo (the standalone rule in `SKILL.md`).
 
 ## Resolving sources — the author names a quiz, not a file list
 
@@ -63,11 +63,12 @@ Given only "Quiz 1", resolve the source list yourself:
     - `topics/*.topic.yaml` — the teaching content: `explanation`, plus `✅ correct` / `❌ mistake` code variants under `controls`. **This is the source to cite and quote.**
     - `demos/*.demo.yaml` — the runnable program bound to a topic.
     - `layouts/<demo>.rail.yaml` — which topics appear on the page, in order.
-4. **Slides → `course_site/content/modules/module-NN/slides/`**, where a deck exists. Most modules have none; report which are missing rather than substituting.
+4. **Slides → `cpp_demos/course_materials/week<N>_lesson<M>_<slug>/SLIDES-*.yaml`**, the deck's source (the module page links the compiled `course_site/static/kits/weekNN/slides-lessonM.html`; never read that). `weekNN` means module NN. Report a module with no deck rather than substituting.
+5. **A demo split across modules** is tagged by what each module page assigns, not by demo. `class_structure` is Module 2 except *Move operations* (Module 4); the pack builder tags a whole demo with one module, so check the module page before writing an item's `Module` cell.
 
 **Do not read the rendered HTML** in `dist_labs/` or on the deployed site. It is generated from the YAML, it is far longer, and it adds nothing the YAML lacks.
 
-Cite sources as `cpp_labs/<demo>/topics/<topic>.topic.yaml`. A `❌ mistake` variant is the strongest stem material in the repository — a real defect, already written, with the correct form beside it for contrast.
+Cite sources as `cpp_labs/<demo>/topics/<topic>.topic.yaml`. A `❌ mistake` variant is the strongest stem material in the repository — a real defect, already written, with the correct form beside it for contrast. Cite it as where the rule is taught; the item itself prints everything the student needs.
 
 **But the recorded behavior is not the answer key.** These variants were run on the author's Mac (arm64, clang). The same program on x86-64 Linux or under gcc or at `-O2` may print a different value, fail differently, or not fail at all; diagnostics and sanitizer output vary by toolchain. The `❌` variant tells you what to *ask about*; the `explanation` field and the standard tell you what to *key*. See the portability rule in `SKILL.md`.
 

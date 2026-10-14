@@ -80,9 +80,15 @@ class SlideBase(BaseModel):
     )
     content_scale: float | None = Field(
         default=None,
-        ge=0.75,
+        ge=0.25,
         le=4.0,
         description='Override deck content_scale for this slide (None = use deck default).',
+    )
+    blockquote_scale: float | None = Field(
+        default=None,
+        ge=0.25,
+        le=4.0,
+        description='Override deck blockquote_scale for this slide (None = use deck default).',
     )
 
     mermaid_scale_mode: Literal['measured', 'fit'] | None = Field(
@@ -535,6 +541,33 @@ class DeckMetadata(BaseModel):
         False,
         description='If True, persist view-scale adjustments in localStorage.',
     )
+    autofit_floor: float = Field(
+        0.5,
+        ge=0.25,
+        le=1.0,
+        description=(
+            'Smallest zoom autofit applies to a slide\'s content area. Below it the '
+            'content scrolls and the slide is reported as needing a split.'
+        ),
+    )
+    autofit_widen_max: float = Field(
+        1.6,
+        ge=1.0,
+        le=3.0,
+        description=(
+            'Cap on how much wider (x canvas width) the content area may become while '
+            'shrinking, so lines stay readable. 1.0 = never widen (tables then cannot fit).'
+        ),
+    )
+    autofit_title_floor: float = Field(
+        0.8,
+        ge=0.5,
+        le=1.0,
+        description=(
+            'Smallest zoom autofit applies to a title that does not fit one line. A title '
+            'that still does not fit takes two lines at full size.'
+        ),
+    )
     bake_mermaid: bool = Field(
         False,
         description=(
@@ -553,11 +586,20 @@ class DeckMetadata(BaseModel):
     )
     content_scale: float = Field(
         1.0,
-        ge=0.75,
+        ge=0.25,
         le=4.0,
         description=(
             'Multiplier for body, captions, tables, code, and non-title prose '
             '(combined with --font-scale).'
+        ),
+    )
+    blockquote_scale: float = Field(
+        1.0,
+        ge=0.25,
+        le=4.0,
+        description=(
+            'Multiplier for `>` blockquotes on top of content_scale (a blockquote is '
+            '44px against 28px body, so 0.64 makes it body-sized).'
         ),
     )
     figure_scale: float = Field(

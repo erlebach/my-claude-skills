@@ -271,6 +271,15 @@ theme guidance, and the full authoring checklist.
 - Do not hide overflow in ways that clip text
 - Prefer wrapping layouts over absolute positioning
 
+**Documented exception (compiled decks, 2026-08-26):** the deck canvas is a fixed 1280×720, and
+`autofitAll()` in `base.html.j2` sets an explicit `height` on a slide's `.slide-content-area`
+(and on a title slide's `<section>`) while it is zoomed to fit. That is a fixed height on a text
+container. It is intrinsic to a fixed-canvas slide format — the content is scaled to the box
+rather than the box to the content — and it is paired with `overflow-y: auto` on the section so
+nothing is clipped. The deck's own `+`/`−` view-scale control is the resize mechanism; browser
+zoom alone is self-cancelling on this page (see `fit()`), which has not been measured against
+WCAG 1.4.4 and should be before the checklist item below is claimed.
+
 ---
 
 ## Reduced Motion

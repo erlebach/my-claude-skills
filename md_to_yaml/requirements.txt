@@ -9,4 +9,4 @@ latex2mathml>=3.79.0
 Pygments>=2.19.2
 Markdown>=3.10.2
 defusedxml>=0.7.1
-bleach>=6.3.0
+bleach[css]>=6.3.0   # the [css] extra pulls tinycss2, which renderers/svg.py imports

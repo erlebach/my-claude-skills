@@ -44,44 +44,51 @@ If everything needed is already known, generate immediately. Do not ask for the 
 
 ## Output Format
 
-Emit the whole quiz inside a single fenced code block so it can be copied verbatim. Inside that block:
+`quiz.md` is written in this format — the skill's only quiz file, which the author's own script turns into LaTeX. Inside it:
 
 - Questions numbered `1.`, `2.`, `3.`, …
 - Choices lettered `a)`, `b)`, `c)`, …
 - The correct answer is prefixed with `*` — exactly one per question
 - True/False items use exactly two choices: `True`, `False`
+- **Code comes before the question.** An item with code opens `N. (P points) Consider the program:` or `N. (P points) Consider the code fragment:` — or, for an agentic item, a one-line scenario in their place ("A model wrote `stem` below:") — then the code block, then the question sentence, then the choices. Keep `N. (P points)` on the first line — `cpp_labs/quiz_parse.py` and the author's LaTeX script key on it.
+- **Show code, do not describe it.** A stem that would say "`Shape` declares `virtual double area() const = 0;` and `Square` derives publicly from it" writes those declarations as a fragment instead. A fragment need not be a whole program — no `main`, no includes — but it must compile once a harness adds the standard includes and, for bare statements, wraps them in a function. Items with no code at all stay as prose.
 
 ```
-1. Every pointer in C++ occupies the same amount of memory regardless of its type.
+1. (1 point) A reference must be bound to an object when it is declared.
 *a) True
 b) False
 
-2. What does the following program print?
+2. (2 points) Consider the code fragment:
 \begin{code}
 std::vector<int> v{1, 2, 3};
 auto it = v.begin();
 v.push_back(4);
 std::cout << *it << "\n";
 \end{code}
-a) 1
-b) 4
-*c) Undefined behavior — the iterator may be invalidated
-d) A compile error
-e) 3
+Which statement about the last line is correct?
+a) It prints 1, because it still refers to the first element.
+b) It prints 4, because push_back moved it to the new element.
+*c) Its behavior is undefined, because push_back may have invalidated it.
+d) It does not compile, because it was invalidated by push_back.
+e) It prints 3, because it now refers to the last original element.
 ```
 
 `\begin{code}` / `\end{code}` are custom LaTeX macros wrapping a verbatim environment. Use them **only** when an item contains source code; never for prose.
 
 ## Item Quality Rules
 
-- **Self-contained.** Supplied homework text or images are illustrative context only; the generated item must stand alone without them.
+- **Standalone: knowledge of C++ and reasoning, never memory of an example.** A student must be able to answer from the item itself plus the C++ rules the course teaches. Every fact the answer needs is either such a rule or printed in the item. Never require the student to remember a specific demo, slide or homework example — its class names, its values, its story, or a line it showed that the item does not. Supplied homework text or images are illustrative context only.
+
+    Code in a stem must contain whatever triggers the behaviour asked about. Quiz 2 (Oct) item 14 showed `class Grid1D : public std::vector<double>` with only a constructor and asked what problem the design creates; the problem — a `g.resize(8)` that breaks the grid's invariant — lived only in the demo, so the item tested recall of the demo, not reasoning. Item 21 hinged on what `-DNDEBUG` does, which the stem never mentioned and the course said once. A defined course term (a named rule, a gate of a taught checklist) is knowledge and may be used; a particular example is not.
+
+    A demo's ❌ variant may supply the raw material, but the stem reproduces whatever it needs, in full, and is answerable by someone who never saw the demo.
 - **Maximize diversity, minimize repetition.** No two items in a set should test the same fact or share a stem pattern.
 - **Distractors must be plausible** — each should correspond to a specific misconception, not be obviously wrong filler.
 - **A distractor must not punish deeper knowledge.** If a stronger student can defend a second option, the item is defective, not hard. ("Which container does insertion NOT invalidate iterators for?" keyed to `std::list` fails this — `std::map` is equally correct.)
 - **Prefer measurable stems to interpretive ones.** "Prints a plausible number" invites two defensible readings; naming the actual value turns the ambiguity into a clean trap.
 - **Uniform choice length.** A conspicuously longer or more hedged option gives the key away.
 - **No "all of the above" / "none of the above"** unless the user asks for it.
-- **Code in stems must compile** (or its non-compilation must be the point of the question).
+- **Code in stems must compile** (or its non-compilation must be the point of the question) — a whole program as printed, a fragment once a harness adds the standard includes and, for bare statements, wraps them in a function.
 - **Key the rule, never the observed output.** A program that was run once was run on *one* platform, compiler, and optimization level. What is portable is what the standard says; what is not portable is the printed value, the failure mode (crash vs. junk vs. silent success), the exit code, the sanitizer message, and which diagnostics fire and how they are worded. Plain `char` signedness, `sizeof(long)`, and endianness are implementation-defined and differ across the machines your students actually own.
 
     The safe framings: *"what is guaranteed?"*, *"is this defined?"*, *"which of these is safe?"* — answers that hold everywhere. The unsafe framing is *"what does this print?"* when the answer is undefined, since it has no portable answer at all. Where an item genuinely needs an observed result, **pin the toolchain in the stem** ("compiled with g++ 13 on x86-64 Linux, no optimization") and accept that it tests that configuration only.
@@ -95,14 +102,16 @@ Every quiz is written to its own folder, never to the chat alone. **One folder p
 ```
 quiz-<N>/                                    # one per quiz in the course — quiz-1, quiz-2, …
     build_<YYYY-MM-DD_HHhMMmEST>/            # one per loop; the quiz is built here, start to finish
-        quiz.md          # CURRENT student version — no keys
+        quiz.md          # CURRENT quiz — every item, correct choice marked `*`; the instructor's script makes the LaTeX sheets from it
         key.md           # CURRENT instructor version — keys, points, tier, source per item
         source_check.md  # current source verification
         analysis.md      # current key-blind review
+        quiz_blind.md    # quiz.md with the `*` removed — the key-blind reviewer's input, never a deliverable
         loop_state.json  # THE LOOP'S OWN STATE — see below
         rounds/
             round-1/                 # immutable snapshot of the round, written when it ends
                 quiz.md  key.md  source_check.md  analysis.md
+                quiz_blind.md        # the round's reviewer input (same rule as the top-level copy)
                 facts.txt            # one line per item: the single fact it tests — the ledger
                 verdicts.json        # per-item source verdict, machine-readable
                 duplication.json     # item pairs testing the same fact, with confidence
@@ -118,6 +127,10 @@ The test: a fresh session must be able to open that one file and say what round 
 The **top-level files are the product**; the `rounds/` folders are the trace. A round folder is immutable once written — a later round writes a *new* folder and refreshes the top-level copies. Never overwrite a round; the whole point is that the repair history is inspectable.
 
 Source packs are shared across quizzes and sit beside the quiz folders (`quizzes/source_packs/`), not inside them.
+
+**A second question set for the same quiz** is a new `build_<timestamp>/` in the same `quiz-<N>/` folder. Hand the generators the earlier set's `quiz.md` path with the instruction not to reuse its stems or code, and not to test the same fact from the same angle. They never open its `key.md`.
+
+Write files with `command cp` / `command rm`: in this shell both are aliased to interactive, and a plain `rm` waits on a prompt nobody answers.
 
 Get every timestamp from `date` — do not invent one. The course profile says where the tree lives; if there is no profile, ask.
 
@@ -136,7 +149,7 @@ Get every timestamp from `date` — do not invent one. The course profile says w
 
 The review and the duplication pass get the highest effort because they are the stages doing genuinely hard work: constructing the strongest possible defense of an option it believes is wrong, and finding a shared fact under two items that cite different files. Generation and source-checking are bounded tasks with a clear target; adversarial work is not.
 
-These are enforced by running the pipeline as a Workflow — the Agent tool has no `effort` parameter, so individual dispatches cannot honour this table. See below.
+These are enforced by running the pipeline as a Workflow, which sets each stage's effort. A plain Agent dispatch may set effort only when the author explicitly asks for it, so separate dispatches cannot honour this table on their own. See below.
 
 ## Running the Pipeline
 
@@ -148,11 +161,11 @@ Workflow({ scriptPath: "~/.claude/skills/quiz-cpp/pipeline.js", args: {...} })
 
 The user has given standing authorization for this orchestration as part of this skill — no separate opt-in is needed each time.
 
-`args` supplies: `course`, `coverage`, `itemCount`, `composition`, `tiers` (the tier/count/points list, in **descending** order), `sourcePaths` (the actual demo pages and slide decks, read in step 1), `profilePath`, `formatRules`, and any `extraInstructions`. The script has no filesystem access and no `Date` — take the timestamp from `date` yourself and pass anything else in through `args`.
+`args` supplies: `course`, `coverage`, `itemCount`, `composition`, `tiers` (the tier/count/points list, in **descending** order), `packPath` (the source pack built in step 0 — preferred) or `sourcePaths` (the topic YAML and slide-deck files, read in step 1), `profilePath`, `formatRules`, `difficulty` (only when the author named one — it overrides the profile's default and reaches every generator and regenerator), and any `extraInstructions`. The script has no filesystem access and no `Date` — take the timestamp from `date` yourself and pass anything else in through `args`.
 
 It returns `{quiz, key, facts, source_check, verdicts, analysis, duplication, unsourced}` as text and data. **You write the files**, then do step 6.
 
-**Rounds 2 and later skip generation entirely.** Pass `preAuthoredPaths` (or `preAuthored`) with the current `quiz`/`key`/`facts`, and the script re-runs only the three checks over the quiz that already exists. Without this the loop is not a loop: every round would rewrite all 22 items and throw away the ones that already passed. This is also what makes the round cap affordable — measured on Quiz 1, round 1 was 950 s / 524k tokens, round 2 was 420 s / 150k.
+**Rounds 2 and later skip generation entirely.** Pass `preAuthoredPaths` (or `preAuthored`) with the current `quiz`/`key`/`facts` plus `blindQuiz` — the path to that round's starless `quiz_blind.md`, which the script requires because `quiz.md` carries the `*` key — and the script re-runs only the three checks over the quiz that already exists. Without this the loop is not a loop: every round would rewrite all 22 items and throw away the ones that already passed.
 
 Three properties this buys, worth preserving if the script is ever edited:
 
@@ -192,8 +205,8 @@ Because the caller writes the files, a run that fails produces **no files at all
 
 - **`quiz` and `key` are real documents**, not a placeholder, a path, or a summary. A generation agent has completed the entire task — read the pack, authored ten items, compiled every stem — and then emitted the literal string `placeholder` into both fields, destroying the run. The work is not the return value; only the return value is.
 - **The item numbers you asked for are present** in `quiz`. Grep for them.
-- **No key leaked into `quiz`** — no `*` prefixes, no tier labels, no answer list.
-- **Every code stem compiles as printed.** Extract the `\begin{code}` blocks and run them through the compiler yourself. Do not accept the key's claim that it compiled them; that claim has been wrong.
+- **Exactly one `*` per item in `quiz`**, on a lettered choice line — and no tier labels, no answer list.
+- **Every code stem compiles** — a whole program as printed, a fragment once a harness adds the standard includes and, for bare statements, wraps them in a function. Extract the `\begin{code}` blocks and run them through the compiler yourself. Do not accept the key's claim that it compiled them; that claim has been wrong.
 
 If any check fails, re-run rather than repair. Bust the agent cache by editing the prompt — a `resumeFromRunId` with an unchanged prompt replays the same bad result from cache.
 
@@ -218,7 +231,7 @@ Handed a placeholder instead of a quiz, the key-blind reviewer refused and said 
 
     This replaces the batch-and-cut process — see **The verification loop** below for why generating a pool and cutting it could not work.
 
-3. **Transcribe the files verbatim**, then run the **deterministic gate before anything else**: parse `quiz.md` with `cpp_labs/quiz_parse.py` and compile every stem with the engine's own `g++ -std=c++20`. It costs about a second and it is the only check in the pipeline that cannot be wrong. Then check `quiz.md` yourself: no `*` marks, no tier labels, no answer list, point value printed on every stem. A key that leaks into the student file invalidates every later stage.
+3. **Transcribe the files verbatim**, then run the **deterministic gate before anything else**: parse `quiz.md` with `cpp_labs/quiz_parse.py` (it reads the `*` into each item's `key`) and compile every code block with the engine's own `g++ -std=c++20` — whole programs as printed; fragments with the standard includes prepended and bare statements wrapped in a function. It costs about a second and it is the only check in the pipeline that cannot be wrong. Then check `quiz.md` yourself: exactly one `*` per item, on a choice line; no tier labels, no answer list; point value printed on every stem. Write `quiz_blind.md` beside it — the same text with the `*` removed — for the key-blind reviewer.
 
     A stem that does not compile is a blocking finding **unless non-compilation is the item's key** — Quiz 1's item 5 is keyed to "rejected at compile time", and the gate must not be allowed to regenerate it.
 
@@ -226,7 +239,7 @@ Handed a placeholder instead of a quiz, the key-blind reviewer refused and said 
 
     This agent sees the keys, so it can **never** be the key-blind reviewer — separate dispatches, always.
 
-    Per item it reports: the cited source; whether that source exists; whether the cited material supports the item — `SUPPORTED` / `PARTIAL` / `UNSUPPORTED` / `NO SOURCE`; whether the key rests on a recorded observation rather than a rule (`platform_dependent`); and **any term the item depends on that no source in the corpus introduces**. That last check catches items testing vocabulary the course has not taught, which no other stage can see.
+    Per item it reports: the cited source; whether that source exists; whether answering needs memory of that specific example rather than the rule it teaches (`example_recall`); whether the cited material supports the item — `SUPPORTED` / `PARTIAL` / `UNSUPPORTED` / `NO SOURCE`; whether the key rests on a recorded observation rather than a rule (`platform_dependent`); and **any term the item depends on that no source in the corpus introduces**. That last check catches items testing vocabulary the course has not taught, which no other stage can see.
 
     **The criterion is "are the premises taught?", never "is the conclusion stated?"** The quiz tests deduction, so an L2 or L3 item is properly grounded when the corpus teaches every fact the student must *combine* — the combination itself appearing nowhere is the exercise, not a gap. Run the other way and the rule bites harder: **for an L3 item, a key stated verbatim in the corpus is a defect** — a recall item priced at three points.
 
@@ -236,13 +249,13 @@ Handed a placeholder instead of a quiz, the key-blind reviewer refused and said 
 
     **Verdicts are data, not prose.** The agent returns a `verdicts` array alongside its report, one entry per item, and the flagged set is a *filter over that array* — never something read out of the report's tables. This exists because reading failed: four flagged items were reported as two, from skimming one column of a 22-row table while the totals line two screens below said otherwise. **When a number matters, parse it — do not read it.** An item flagged in the prose but absent from the array is silently kept, so the array is what the loop obeys.
 
-5. **Key-blind review** → `analysis.md`, at high effort. This is the stage worth the most compute. Its report ends with a seven-column table — `Q | Answer | Confidence | AMBIGUOUS | weak_count | expected_pass | trap_quality` — read by script, so a cell containing prose breaks it. Transcribe the review verbatim; do not summarize it, the per-option paragraphs are the artifact.
+5. **Key-blind review** → `analysis.md`, at high effort. This is the stage worth the most compute. Its report ends with an eight-column table — `Q | Answer | Confidence | AMBIGUOUS | STANDALONE | weak_count | expected_pass | trap_quality` — read by script, so a cell containing prose breaks it. Transcribe the review verbatim; do not summarize it, the per-option paragraphs are the artifact.
 
 6. **Duplication** → `duplication.json`, at high effort, in parallel with the other two. **This agent sees every question AND every key at once** — the one stage in the pipeline with a whole-quiz view. It must, because a collision is usually invisible from the stems: two items can cite different files while one item's key rests on the other item's exact fact. It reports item *pairs* with a confidence and a `same_fact` flag, and where the two are in different tiers, which contains which.
 
     This is what the old cross-batch selection sheet was for, and it does the job better: a batch reviewer could never see past its own ten items.
 
-7. **Decide the round.** Collect the blocking set: gate failures, `UNSUPPORTED` / `NO SOURCE` verdicts, `platform_dependent` items, untaught terms, reviewer/key disagreements, `AMBIGUOUS` flags, and duplicate pairs above the confidence bar. If it is empty, the loop has converged. Otherwise regenerate **only those items** and start the next round — see **The verification loop** below.
+7. **Decide the round.** Collect the blocking set: gate failures, `UNSUPPORTED` / `NO SOURCE` verdicts, `platform_dependent` items, untaught terms, reviewer/key disagreements, `AMBIGUOUS` flags, `STANDALONE` no, `example_recall` items, and duplicate pairs above the confidence bar. If it is empty, the loop has converged. Otherwise regenerate **only those items** and start the next round — see **The verification loop** below.
 
     Report the blocking set in chat every round, and end with the **file manifest** — every file created or modified, by full path, and the words "no files created or modified" when a round produced none.
 
@@ -252,13 +265,13 @@ The check that matters is not "is the key right?" but **"can a strong student de
 
 ### The key-blind rule
 
-**The subagent must see `quiz.md` and nothing else.** Not `key.md`, not the facts ledger, not your reasoning, not which items you already suspect. A reviewer who has seen the key cannot tell you whether the key is findable — it will rationalize toward the answer it was given. If the subagent is contaminated, the review is worthless and must be re-run from a fresh agent.
+**The subagent must see `quiz_blind.md` — `quiz.md` with the `*` markers removed — and nothing else.** Never `quiz.md` itself: it carries the key. Not `key.md`, not the facts ledger, not your reasoning, not which items you already suspect. A reviewer who has seen the key cannot tell you whether the key is findable — it will rationalize toward the answer it was given. If the subagent is contaminated, the review is worthless and must be re-run from a fresh agent.
 
 **Never tell the reviewer the key does not exist.** In round 1 it happens to be true — nothing has reached disk — but from round 2 on the files are there and the claim is a lie the reviewer can discover. Say the key exists, say not to look, and say why. Structural blindness is an unavoidable casualty of iterating; covering it up with a false assertion is not.
 
 Dispatch prompt, in substance:
 
-> Read `<path>/quiz.md` and nothing else. An answer key for this quiz **does** exist on disk, and so does the source material — do not go looking for either. Opening them invalidates this review completely, because the one question worth answering here is whether the key is findable from the item alone, and a reviewer who has seen the key cannot tell you that. If you find yourself wanting to check something, that wanting is the signal the item may be ambiguous: write that down instead. Return your full review as your final message. For **every question**, give: your chosen answer and confidence; then **one paragraph per option** — a–e, including your own choice — stating the strongest case a well-prepared student could make for it and why it is finally right or wrong; the specific misconception each wrong option would catch, or `WEAK` if it would catch nobody; a difficulty estimate; and a flag `AMBIGUOUS` if two or more options are genuinely defensible, naming them. Do not skip options you consider obviously wrong — say why they are obviously wrong. End with the seven-column summary table, which is read by a script.
+> Read `<path>/quiz_blind.md` and nothing else. An answer key for this quiz **does** exist on disk, and so does the source material — do not go looking for either. Opening them invalidates this review completely, because the one question worth answering here is whether the key is findable from the item alone, and a reviewer who has seen the key cannot tell you that. If you find yourself wanting to check something, that wanting is the signal the item may be ambiguous: write that down instead. Return your full review as your final message. For **every question**, give: your chosen answer and confidence; then **one paragraph per option** — a–e, including your own choice — stating the strongest case a well-prepared student could make for it and why it is finally right or wrong; the specific misconception each wrong option would catch, or `WEAK` if it would catch nobody; a difficulty estimate; a flag `AMBIGUOUS` if two or more options are genuinely defensible, naming them; and `STANDALONE` no if the answer depends on a fact, scenario or line the item does not show. Do not skip options you consider obviously wrong — say why they are obviously wrong. End with the eight-column summary table, which is read by a script.
 
 ## The verification loop
 
@@ -310,6 +323,7 @@ This replaces batch-and-cut, and the reason is arithmetic rather than taste. Qui
 | `UNSUPPORTED` / `NO SOURCE` | **yes** |
 | `platform_dependent` — key rests on a recorded observation | **yes** |
 | Untaught term the item depends on | **yes** |
+| Not standalone — the reviewer marks `STANDALONE` no, or the source check sets `example_recall` | **yes** |
 | Reviewer's answer differs from the key | **yes** |
 | `AMBIGUOUS` — two options genuinely defensible | **yes** |
 | Duplicate pair with `same_fact: true` at high confidence | **yes**, once — but see the stability rule below |
@@ -374,16 +388,17 @@ turn a capped loop into an unbounded one.
 
 **Early exits, in the order they fire:**
 
-1. **Converged** — no blocking finding, and no regeneration still awaiting its
-   acceptance score. The normal ending.
+1. **Converged** — no blocking finding in the round's merged results. The normal
+   ending.
 2. **No progress** — this round's blocking set is a subset of last round's, with
    nothing newly fixed. The loop is re-reporting what it could not repair;
    another round buys nothing.
 3. **Per-item exhaustion** — an item has been regenerated twice. It stops being
    regenerated and escalates on its own, while the other items carry on. Track
    this per item, not globally.
-4. **Oscillation** — an item alternates between a constraint failure and a vigor
-   rejection, or fails the same check class twice with different content. Escalate
+4. **Oscillation** — an item alternates between two failure classes (say,
+   `AMBIGUOUS` then a duplicate), or fails the same check twice with different
+   content, or an unchanged pair crosses the duplication threshold and back. Escalate
    immediately rather than spending the cap on it.
 5. **Budget** — a token or wall-clock ceiling, if one was set.
 
@@ -393,8 +408,10 @@ saving.** There are two shapes of later round and they cost very differently:
 - **A checks-only round** — nothing was regenerated, the quiz is re-verified as
   it stands. 3 agents.
 - **A repair round** — the normal case, and the expensive one. Regeneration
-  runs *and then* all three checks run again, because **checking is priced by
-  the whole quiz, not by the number of items that changed.**
+  runs *and then* all three checks run again. The source check and the blind
+  review report only on the changed items but still read the whole quiz; the
+  duplication pass reads everything. So **a check's input is priced by the whole
+  quiz, whatever number of items changed** — scoping saves output, not reading.
 
 Quiz 2, measured from the per-turn `usage` records in the agent transcripts
 (16 subagents, 186 turns total):
@@ -475,7 +492,7 @@ checker.
 | Using a scoped round's `verdicts` as the whole picture | Merge onto the previous round's before computing the blocking set; assert the merged count equals the item count |
 | Writing a scoped round's `analysis.md` with only the changed items in it | Seed from the previous round's file and replace those sections. The artifact is always all N items |
 | Scoping what an agent READS rather than what it writes | Every check sees the whole quiz; only the reporting narrows. `AMBIGUOUS` depends on the rest of the quiz |
-| Treating `expected_pass` or `trap_quality` as measurements | They drifted on 14/15 unchanged items across three runs. Estimates. Only the answer column and `AMBIGUOUS` block |
+| Treating `expected_pass` or `trap_quality` as measurements | They drifted on 14/15 unchanged items across three runs. Estimates. Only the answer, `AMBIGUOUS` and `STANDALONE` columns block |
 | Regenerating a good item over a `PARTIAL` citation | `PARTIAL` is advisory; fix the citation in `key.md` |
 | Replacing the L3 item of a cross-tier duplicate pair | Replace the cheaper item; the trace swallows the recall item, not the reverse |
 | Reading the flagged set out of `source_check.md`'s tables | Filter `verdicts.json`. When a number matters, parse it — do not read it |
@@ -485,8 +502,11 @@ checker.
 | Four choices by default | Five, unless specified |
 | Marking the key with bold, `(correct)`, or an answer list at the end | Only the `*` prefix, inline |
 | `\begin{code}` around plain prose | Code only |
+| Question sentence above the code, or code described in prose | Code first, then the question; write declarations as a fragment, not a sentence |
 | Answer key positionally biased toward `c)` | Distribute keys across all letters |
-| Writing the returned `quiz`/`key` to disk unchecked | Validate first: real documents, right item numbers, no key leak, every stem compiles |
+| Writing the returned `quiz`/`key` to disk unchecked | Validate first: real documents, right item numbers, exactly one `*` per item, every stem compiles |
+| Stripping the `*` from `quiz.md`, or calling it a key leak | `quiz.md` carries the key; the instructor's LaTeX script makes the student and key sheets. Only `quiz_blind.md` is starless |
+| Giving the key-blind reviewer `quiz.md` | It holds the `*` key. Pass `quiz_blind.md` (`preAuthoredPaths.blindQuiz` on rounds 2+) |
 | Trusting `key.md`'s claim that the stems compile | Extract the code blocks and compile them yourself |
 | Resuming a failed run with the prompt unchanged | Cached agents replay the same bad result; edit the prompt to bust the cache |
 | A checking agent hunting for a substitute when handed no quiz | Tell both checkers to stop and report, never to go find another target |
@@ -499,3 +519,4 @@ checker.
 | An L3 item whose key is verbatim in the corpus | That is a recall item at three points. Raise the derivation, don't celebrate the citation |
 | Re-running generation on round 2 | Pass `preAuthoredPaths`; rounds 2+ re-check the quiz that already exists |
 | Regenerating the item whose key *is* "rejected at compile time" | The gate must exempt items keyed to non-compilation |
+| An item answerable only by someone who remembers the demo | Print in the item every fact and line the answer needs; test the rule, not the example |

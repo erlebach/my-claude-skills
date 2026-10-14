@@ -1,16 +1,17 @@
 export const meta = {
   name: 'quiz-pipeline',
   description: 'Generate a course quiz, verify its sources, and review it key-blind',
-  whenToUse: 'Driven by the quiz-cpp skill. Returns quiz, key, source check and blind review as text; the caller writes the four files.',
+  whenToUse: 'Driven by the quiz-cpp skill. Returns quiz, key, facts, source check, verdicts, blind review and duplication as text and data; the caller writes the files.',
   phases: [
-    { title: 'Generate', detail: 'one agent authors quiz + key together (opus, medium)' },
-    { title: 'Check', detail: 'source verification and key-blind review, in parallel' },
+    { title: 'Generate', detail: 'one agent per tier, hardest first; each authors its items and their keys together (opus, medium)' },
+    { title: 'Check', detail: 'source verification, key-blind review and duplication, in parallel' },
   ],
 }
 
 // args: {
-//   course, coverage, itemCount, composition, sourcePaths[], profilePath,
-//   formatRules, extraInstructions
+//   course, coverage, itemCount, composition, tiers[], packPath | sourcePaths[],
+//   profilePath, formatRules, difficulty, extraInstructions,
+//   preAuthoredPaths {quiz, blindQuiz, key, facts} | preAuthored, changedItems[]
 // }
 // args may arrive as an object OR as a JSON-encoded string depending on how the
 // Workflow tool serializes it — parse defensively. Getting this wrong silently
@@ -30,8 +31,8 @@ if (missing.length || noSources) {
   return { error: `missing required args: ${[...missing, ...(noSources ? ['sourcePaths or packPath'] : [])].join(', ')}` }
 }
 
-// A source pack (see sourcepack.js) is a verbatim distillation of the same YAML,
-// ~5x smaller and one file instead of ~126. When one exists, the generator reads
+// A source pack (built by `python3 -m cpp_labs.make_source_pack`) is a verbatim
+// copy of the same YAML, ~1.7x smaller and one file instead of ~114. When one exists, the generator reads
 // it instead — but the source-check agent always opens the ORIGINAL files, so the
 // pack is never verified against itself.
 const sources = a.packPath
@@ -64,7 +65,7 @@ const QUIZ_SCHEMA = {
   type: 'object',
   required: ['quiz', 'key', 'unsourced'],
   properties: {
-    quiz: { type: 'string', description: 'Full contents of quiz.md. No keys, no tier labels, no answer list.' },
+    quiz: { type: 'string', description: 'Full contents of quiz.md: exactly one `*` before the correct choice of each item. No tier labels, no answer list.' },
     key: { type: 'string', description: 'Full contents of key.md, including the composition table with a Source column.' },
     unsourced: {
       type: 'array',
@@ -117,12 +118,13 @@ const SOURCE_SCHEMA = {
       description: 'One entry per item. Every item must appear exactly once.',
       items: {
         type: 'object',
-        required: ['item', 'verdict', 'platform_dependent', 'untaught_terms', 'note'],
+        required: ['item', 'verdict', 'platform_dependent', 'untaught_terms', 'example_recall', 'note'],
         properties: {
           item: { type: 'integer' },
           verdict: { type: 'string', enum: ['SUPPORTED', 'PARTIAL', 'UNSUPPORTED', 'NO SOURCE'] },
           platform_dependent: { type: 'boolean', description: 'True if the key rests on a recorded observation rather than a rule.' },
           untaught_terms: { type: 'array', items: { type: 'string' }, description: 'Terms the item depends on that no cited source introduces. Empty if none.' },
+          example_recall: { type: 'boolean', description: 'True if answering needs memory of the cited example itself (its names, values, scenario, or a line the item does not print) rather than the rule it teaches.' },
           note: { type: 'string' },
         },
       },
@@ -134,7 +136,7 @@ const TIER_SCHEMA = {
   type: 'object',
   required: ['quiz', 'key', 'facts', 'unsourced'],
   properties: {
-    quiz: { type: 'string', description: 'Numbered items for THIS TIER ONLY. No keys, no tier labels, no header.' },
+    quiz: { type: 'string', description: 'Numbered items for THIS TIER ONLY, exactly one `*` before the correct choice of each. No tier labels, no header.' },
     key: { type: 'string', description: 'Composition table rows and rationales for THIS TIER ONLY. No table header row.' },
     facts: { type: 'string', description: 'One line per item: "N: the single fact this item tests".' },
     unsourced: { type: 'array', items: { type: 'integer' } },
@@ -154,7 +156,7 @@ let authored
 if (a.preAuthoredPaths && a.preAuthoredPaths.quiz && a.preAuthoredPaths.key) {
   log(`checking quizzes on disk; generation skipped`)
   authored = {
-    quiz: `(READ THE QUIZ FROM THIS FILE, and read nothing else: ${a.preAuthoredPaths.quiz})`,
+    quiz: `(READ THE QUIZ FROM THIS FILE: ${a.preAuthoredPaths.quiz})`,
     key: `(READ THE KEY FROM THIS FILE: ${a.preAuthoredPaths.key})`,
     facts: a.preAuthoredPaths.facts ? `(facts ledger: ${a.preAuthoredPaths.facts})` : '',
     unsourced: [],
@@ -194,7 +196,7 @@ for (const t of TIERS) {
   const out = await agent(
     `You are authoring the ${t.tier} items of a quiz for ${a.course || 'a C++ course'}, covering: ${a.coverage}.
 
-Read the course profile at ${a.profilePath} for the tier definitions, the scope rule, and the item conventions. Read these assigned sources in full before writing anything — not their index pages, not summaries:
+Read the course profile at ${a.profilePath} for the tier definitions, the scope rule, and the item conventions.${a.difficulty ? ` DIFFICULTY, set by the author for this quiz and overriding the profile: ${a.difficulty}.` : ''} Read these assigned sources in full before writing anything — not their index pages, not summaries:
 
 ${sources || '(none supplied — report every item as unsourced)'}
 
@@ -204,7 +206,9 @@ ${a.formatRules || ''}
 
 Return THREE things.
 
-quiz — the student version of these items only. Numbered stems, lettered options, the point value printed on every stem, and NOTHING that reveals an answer: no asterisks, no tier labels, no answer list. No document header; these items are concatenated with the other tiers'.
+quiz — these items as they go into quiz.md. Numbered stems, lettered options, the point value printed on every stem, and exactly one '*' immediately before the correct choice of each item, e.g. '*c) ...' — the instructor's script turns this into the LaTeX student and key sheets. No tier labels, no answer list. No document header; these items are concatenated with the other tiers'.
+
+Every item must be STANDALONE: answerable from the item itself plus the C++ rules the course teaches. Never require memory of a specific demo, slide or example - its names, values, story, or a line it showed that the item does not. Code in a stem contains whatever triggers the behaviour asked about. Put code first: 'N. (P points) Consider the program:' or 'N. (P points) Consider the code fragment:' - or, for an agentic item, a one-line scenario in their place, such as 'A model wrote stem below:' - then the code block, then the question sentence, then the choices. Write code a stem would otherwise describe in prose as a fragment. A fragment need not be a whole program, but it must compile once the standard includes are added and bare statements are wrapped in a function.
 
 key — the instructor version of these items only: one composition-table ROW per item (no header row) with item number, tier, points, module, Source, agentic yes/no, key letter; then one rationale paragraph per item saying why the key is the key and what misconception each wrong option catches. The Source cell must be specific enough to reopen — a topic YAML path plus its section. Write 'none' where an item was invented rather than drawn from the material, and list those numbers in unsourced.
 
@@ -252,6 +256,19 @@ const unescape = s => String(s || '')
 authored.quiz = unescape(authored.quiz)
 authored.key = unescape(authored.key)
 
+// quiz.md carries the key as a `*` before the correct choice - the instructor's
+// LaTeX script needs it there. The key-blind reviewer must never see it, so it
+// gets a starless copy: stripped here when the quiz is in memory, and read from
+// a caller-written quiz_blind.md (preAuthoredPaths.blindQuiz) when it is on disk.
+const stripKey = s => String(s || '').replace(/^(\s*)\*(?=[a-e]\))/gm, '$1')
+let blindQuiz = stripKey(authored.quiz)
+if (a.preAuthoredPaths) {
+  if (!a.preAuthoredPaths.blindQuiz) {
+    return { error: 'preAuthoredPaths.blindQuiz is required: quiz.md carries the * key, so the key-blind reviewer needs the starless quiz_blind.md. No files were written.' }
+  }
+  blindQuiz = `(READ THE QUIZ FROM THIS FILE, and read nothing else: ${a.preAuthoredPaths.blindQuiz})`
+}
+
 // A generation agent once read the pack, authored ten items, compiled every stem —
 // and then emitted the literal string "placeholder" into both fields. The schema was
 // satisfied (a string is a string), so the run continued: the reviewer refused to
@@ -298,14 +315,21 @@ if (wanted) {
 
 phase('Check')
 
-// Both checks depend only on the finished quiz, so they run concurrently.
-// The reviewer is never given the key — and at this point no key exists on disk.
+// The three checks depend only on the finished quiz, so they run concurrently.
+// The reviewer is never given the key. In round 1 no key exists on disk yet;
+// from round 2 on it does, and the reviewer is told not to look.
 const [sourceCheck, review, duplication] = await parallel([
   () => agent(
     `Verify the sources cited by a quiz answer key. Here is key.md:
 
 ---
 ${authored.key}
+---
+
+And here is the quiz itself, which you need in order to judge EXAMPLE RECALL (what the item prints and what it leaves out):
+
+---
+${authored.quiz}
 ---
 
 If the text between those delimiters is not an answer key — it is empty, a placeholder, a file path, or a summary — STOP and report exactly that. Do NOT search the repository for another key.md to verify instead. An earlier run of this pipeline was handed a placeholder, went looking, found a previous run's key on disk, and returned a detailed and entirely confident report about items nobody had asked about. A one-line "no key was supplied" is far more useful than a thorough answer to the wrong question.
@@ -322,6 +346,8 @@ For every item IN SCOPE, open the source it cites and report:
 
 - PLATFORM-DEPENDENT, if the item's key rests on a recorded observation — a printed value, a crash, an exit code, a sanitizer message, a diagnostic — rather than on a rule. The source material's runnable variants were recorded on one machine; their behavior is not portable, and the key must come from the explanation and the standard instead.
 
+- EXAMPLE RECALL, if a student could answer only by remembering this particular example - its class names, values, story, or a line of its code the item does not print - rather than by applying the rule it teaches. The quiz tests C++ knowledge and reasoning; every fact the answer needs must be a taught rule or printed in the item. Set example_recall in the verdicts array.
+
 The vocabulary check is the one that matters most: an item testing a term the course has not taught will pass every other stage, because a reviewer who knows the subject will answer it without noticing anything is missing.
 
 Return a markdown report, one section per item, ending with a summary table.
@@ -335,7 +361,7 @@ ALSO fill the verdicts array: one entry per item IN SCOPE, each exactly once (al
 An answer key for this quiz DOES exist on disk, and so does the source material. Do not go looking for either. Opening them invalidates this review completely, because the one question worth answering here is whether the key is findable from the item alone - and a reviewer who has seen the key cannot tell you that. Do not search the filesystem, the repository, or the web. If you find yourself wanting to check something, that wanting is the signal the item may be ambiguous: write that down instead.
 
 ---
-${authored.quiz}
+${blindQuiz}
 ---
 
 If the text between those delimiters is not a quiz — it is empty, a placeholder, a file path, or a summary — STOP and report exactly that. Do not invent quiz items and then review your own inventions, and do not go looking for a quiz elsewhere.
@@ -348,17 +374,19 @@ Write a review. For every question IN SCOPE:
 3. For each wrong option, the specific misconception a student holding it would have — or WEAK if it would catch nobody.
 4. A difficulty estimate: time needed, and the fraction you would expect to answer correctly.
 5. AMBIGUOUS, if two or more options are genuinely defensible — name them and give the argument for the second. This is the most important output. Be adversarial: actively try to construct a defense for a second option before concluding an item is clean.
+6. STANDALONE - no, if the answer depends on a fact, scenario or line of code the item does not show, so that only someone who had seen a particular example could answer it. Every fact the answer needs must be either general C++ knowledge or printed in the item.
 
 Also flag: anything factually wrong in a stem; code that would not compile where that is not the point of the item; any option whose wording gives the key away by being longer, more hedged, or more precise than its neighbours; and — mark these PLATFORM-DEPENDENT — any item whose key would change with a different compiler, operating system, architecture, or optimization level. Students sit this on their own machines; an answer that holds only on arm64 macOS with clang is not an answer.
 
-End with a summary table covering the in-scope questions, having EXACTLY these seven columns, in this order:
+End with a summary table covering the in-scope questions, having EXACTLY these eight columns, in this order:
 
-| Q | Answer | Confidence | AMBIGUOUS | weak_count | expected_pass | trap_quality |
+| Q | Answer | Confidence | AMBIGUOUS | STANDALONE | weak_count | expected_pass | trap_quality |
 
 - Q — the question number, digits only
 - Answer — one letter, a-e
 - Confidence — exactly one of: high, medium, low
 - AMBIGUOUS — exactly "yes" or "no", nothing else; put your reasoning in the per-question section above, not in this cell
+- STANDALONE — exactly "yes" or "no": yes when the item alone, plus C++ knowledge, is enough
 - weak_count — an integer 0-4: how many of the four wrong options you judged WEAK
 - expected_pass — a decimal 0.00-1.00: the fraction of well-prepared students you expect to answer correctly
 - trap_quality — an integer 1-5: how hard you had to work to rule out the strongest wrong option. 5 means you had to build a real defence and then dismantle it; 1 means every wrong option fell away in a clause.

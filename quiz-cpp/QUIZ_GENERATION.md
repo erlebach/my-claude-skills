@@ -10,14 +10,16 @@ Everyone runs on Opus 5. Writing and source-checking run at medium effort; the c
 
 The point of the whole arrangement is a single question that is easy to skip and expensive to skip: **can a well-prepared student defend an answer other than the one you intended?**
 
-## The four files
+## The files
 
 Everything lands in one folder, named for the moment the build started. Each quiz in the course has a folder of its own:
 
 ```
 quizzes/quiz-1/
     build_2026-07-28_21h20mEST/
-        quiz.md          what the students see          ← the current version
+        quiz.md          the quiz, key marked with *    ← the current version
+        quiz_blind.md    the same without the *, for the cold reviewer only
+        loop_state.json  which pass it is on, what each pass found, and why it stopped
         key.md           what you see                   ← the current version
         source_check.md  whether each question came from something you assigned
         analysis.md      what the cold reviewer thought
@@ -28,7 +30,7 @@ quizzes/quiz-1/
 
 The files at the top are the quiz. The `rounds/` folders are the history — frozen the moment each pass ends, never edited afterwards, so you can always see what a question looked like before it was rewritten and what was wrong with it.
 
-**`quiz.md`** is the student version. Questions numbered, options lettered, point value printed on each question, no answers anywhere in the file. This is what goes to LaTeX and onto paper.
+**`quiz.md`** is the quiz. Questions numbered, options lettered, point value printed on each question, and a `*` before the correct choice of each question. The instructor's script turns it into formatted LaTeX — the student sheets without the `*`, the key sheets with it. (`quiz_blind.md`, the same text without the `*`, exists only so the key-blind reviewer cannot see the answers.)
 
 **`key.md`** is yours. It opens with a table — one row per question giving its difficulty tier, its point value, which module it belongs to, **where the material came from**, whether it is an agentic item, and the correct answer. Below the table is a paragraph per question explaining why the key is the key and what misconception each wrong option is meant to catch.
 
@@ -44,7 +46,7 @@ The *source* column is the one that earns its place. It has to be specific enoug
 
 **`analysis.md` comes from a different agent that has never seen the key.** This is the part that cannot be shortcut. An agent that knows the intended answer will find reasons for it — that is what reasoning does — and will tell you the key is fine no matter what. Only a reviewer working blind can tell you whether the intended answer is the one a prepared student actually reaches.
 
-So the two files are produced by two independent agents, and deliberately so. `key.md` is not delegated at all; it is written by the agent you are talking to, because it must stay welded to `quiz.md`.
+So the two files are produced by two independent agents, and deliberately so.
 
 **`source_check.md` comes from a third agent**, which reads the key and the sources together. It necessarily sees the answers, which is exactly why it can never also be the cold reviewer — those are always two separate dispatches.
 
@@ -66,7 +68,7 @@ The first pass writes exactly twenty-two questions. There is no surplus and noth
 
 That is a change from how this used to work. The old process wrote about half again as many questions and had you cut the pool down — and on Quiz 1 it turned out there was **no good quiz inside the pool at all**: of the sixteen easy questions written for fourteen slots, only eleven were clean. No amount of careful choosing gets you a defect-free quiz out of that. Rewriting works where choosing does not, for a simple reason: a flagged question comes with a *reason it was flagged*, which is an instruction to the writer. A pool of alternatives was never told what was wrong with the one it is replacing.
 
-So instead: the checkers flag what they find, **only the flagged questions are rewritten**, and every check runs again over the whole quiz — not just the new questions, because a replacement can collide with a question that was fine a moment ago. That repeats until a pass turns up nothing, and it is capped at five passes regardless. Quiz 1 converged on the second.
+So instead: the checkers flag what they find, **only the flagged questions are rewritten**, and the checks run again. Every checker still reads the whole quiz, but the source check and the cold review report only on the rewritten questions; the duplicate hunt reports any pair that involves one — because a replacement can collide with a question that was fine a moment ago. That repeats until a pass turns up nothing, and it is capped at five passes regardless. Quiz 1 converged on the second.
 
 One flag is deliberately *not* acted on. When a source check says the question is right but its citation reaches a little too far, the citation gets fixed in `key.md` and the question is left alone — it is invisible to a student, and rewriting a good question over a footnote is how a process like this destroys its own best work.
 
@@ -80,6 +82,7 @@ A finished quiz, plus an account of what each pass found and what it did about i
 - every question it marked ambiguous, and the argument for the second answer
 - every option it judged dead — one nobody would plausibly pick, which quietly turns a five-choice question into a four- or three-choice one
 - every question with no source behind it, or leaning on a word the course never taught
+- every question a student could answer only by remembering a particular course example rather than by knowing C++ — each question must stand on its own
 - every question whose answer would change on a different compiler or machine
 - every pair of questions found to test the same fact
 

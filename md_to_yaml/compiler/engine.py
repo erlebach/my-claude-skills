@@ -1,4 +1,5 @@
 """Compiler engine: validate-then-render pipeline."""
+import base64
 import json
 import re
 import shutil
@@ -34,6 +35,37 @@ from compiler.renderers.math import (
 import html as _html
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
+FONTS_DIR = Path(__file__).parent / "fonts"
+
+
+def _embedded_font_css(family: str) -> str | None:
+    """An @font-face block with the family inlined, or None if it is not cached.
+
+    A deck is otherwise self-contained -- --embed-images inlines every image --
+    so the stylesheet link to Google was the one thing a reader had to fetch:
+    offline they got a fallback font, online they made a request to Google that
+    the deck never told them about. A font dropped in compiler/fonts/<slug>.woff2
+    is inlined instead. Anything not cached still falls back to the Google link
+    in base.html.j2, so naming a new font in a deck keeps working.
+
+    The cached files are variable fonts, hence the `font-weight: 100 700` range:
+    one file serves every weight the templates ask for (400, 600, 700) rather
+    than three copies of the same base64.
+    """
+    slug = re.sub(r"[^a-z0-9]+", "-", family.lower()).strip("-")
+    path = FONTS_DIR / f"{slug}.woff2"
+    if not path.is_file():
+        return None
+    b64 = base64.b64encode(path.read_bytes()).decode("ascii")
+    return (
+        "@font-face {\n"
+        f"  font-family: '{family}';\n"
+        "  font-style: normal;\n"
+        "  font-weight: 100 700;\n"
+        "  font-display: swap;\n"
+        f"  src: url(data:font/woff2;base64,{b64}) format('woff2');\n"
+        "}"
+    )
 
 
 def _merge_bullet_stagger_config(deck: Deck, slide) -> dict[str, float | str] | None:
@@ -356,12 +388,22 @@ def _render(
 
         if slide.layout == "code" and getattr(slide, "body", None):
             code_body = slide.body.strip()
-            # Strip markdown code fences if present
+            trailing_body = ""
+            # Strip markdown code fences if present. The closing fence is the
+            # LAST line that is exactly ``` — searching from the end so a code
+            # sample may itself contain fences. Anything after that line is
+            # slide prose, and belongs below the panel rather than inside it.
             if code_body.startswith("```"):
                 lines = code_body.split("\n")
                 lines = lines[1:]  # remove opening fence
-                if lines and lines[-1].strip() == "```":
-                    lines = lines[:-1]  # remove closing fence
+                close_at = next(
+                    (j for j in range(len(lines) - 1, -1, -1)
+                     if lines[j].strip() == "```"),
+                    None,
+                )
+                if close_at is not None:
+                    trailing_body = "\n".join(lines[close_at + 1:]).strip()
+                    lines = lines[:close_at]
                 code_body = "\n".join(lines)
             rendered_code = render_code(
                 code_body,
@@ -369,6 +411,19 @@ def _render(
                 slide.line_numbers,
                 deck.metadata.theme,
             )
+            # Always reset rendered_body — the pre-computed value was rendered
+            # from the whole body, fenced code included, which must not be
+            # repeated underneath the panel.
+            if trailing_body:
+                class _BodyProxy:
+                    body = trailing_body
+                    layout = "content"
+                rendered_body = render_body(
+                    _BodyProxy(), embed_images=embed_images,
+                    theme=deck.metadata.theme, macros=macros,
+                )
+            else:
+                rendered_body = None
         elif slide.layout == "figure":
             base_dir = yaml_dir or str(Path(output_path).parent)
             ext = Path(slide.src).suffix.lower()
@@ -476,6 +531,12 @@ def _render(
             if slide_content_scale is not None
             else deck.metadata.content_scale
         )
+        slide_blockquote_scale = getattr(slide, "blockquote_scale", None)
+        eff_blockquote_scale = float(
+            slide_blockquote_scale
+            if slide_blockquote_scale is not None
+            else deck.metadata.blockquote_scale
+        )
         eff_figure_scale = None
         if slide.layout in ("figure", "figure-wide"):
             slide_fig_scale = getattr(slide, "figure_scale", None)
@@ -525,6 +586,7 @@ def _render(
                 "math_display_color": eff_math_color,
                 "title_scale": eff_title_scale,
                 "content_scale": eff_content_scale,
+                "blockquote_scale": eff_blockquote_scale,
                 "figure_scale": eff_figure_scale,
                 "panel_scale_x": panel_scale_x,
                 "panel_scale_y": panel_scale_y,
@@ -576,6 +638,7 @@ def _render(
         has_bullet_animation=has_bullet_animation,
         gsap_script_url=gsap_script_url,
         bake_mermaid=effective_bake,
+        embedded_font_css=_embedded_font_css(deck.metadata.font),
     )
     if effective_bake:
         html = bake_mermaid_in_html(

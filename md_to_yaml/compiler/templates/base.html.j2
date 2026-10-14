@@ -1,13 +1,21 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="{{ deck.metadata.theme }}" data-deck-default-view-scale="{{ deck.metadata.view_scale }}" data-deck-remember-view-scale="{{ 'true' if deck.metadata.remember_view_scale else 'false' }}" data-deck-figure-layout-debug="{{ 'true' if figure_layout_debug else 'false' }}" style="--footer-scale: {{ deck.metadata.footer_scale }}; --slide-footer-inset: {{ deck.metadata.footer_inset | e }};">
+<html lang="en" data-theme="{{ deck.metadata.theme }}" data-deck-default-view-scale="{{ deck.metadata.view_scale }}" data-deck-remember-view-scale="{{ 'true' if deck.metadata.remember_view_scale else 'false' }}" data-deck-autofit-floor="{{ deck.metadata.autofit_floor }}" data-deck-autofit-widen-max="{{ deck.metadata.autofit_widen_max }}" data-deck-autofit-title-floor="{{ deck.metadata.autofit_title_floor }}" data-deck-figure-layout-debug="{{ 'true' if figure_layout_debug else 'false' }}" style="--footer-scale: {{ deck.metadata.footer_scale }}; --slide-footer-inset: {{ deck.metadata.footer_inset | e }};">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   {# MathML namespace URI (declared once here; <math> nodes omit redundant xmlns) #}
   <meta name="mathml-namespace-uri" content="http://www.w3.org/1998/Math/MathML">
   <title>{{ deck.metadata.title | e }}</title>
+{# The deck is self-contained: --embed-images inlines every image, so a stylesheet
+   link to Google was the one thing a reader still had to fetch. A font cached in
+   compiler/fonts/<slug>.woff2 is inlined here instead; any other font named by a
+   deck falls back to the link, so nothing that used to compile stops compiling. #}
+{% if embedded_font_css %}
+  <style>{{ embedded_font_css | safe }}</style>
+{% else %}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family={{ deck.metadata.font | replace(' ', '+') }}:wght@400;600;700&display=swap" rel="stylesheet">
+{% endif %}
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -32,6 +40,8 @@
       --accent: {% if deck.metadata.accent_color %}{{ deck.metadata.accent_color }}{% else %}#f0a500{% endif %};
       --border: #30363d;
       --slide-frame: #4a5568;      /* slide outer border — visible on dark bg; override in YAML via accent_color */
+      --link: #7ee787;             /* link on dark — 12.3:1 vs #0d1117 (WCAG AA) */
+      --link-visited: #d2a8ff;     /* visited on dark — 9.7:1 vs #0d1117 (WCAG AA) */
       --font-family: '{{ deck.metadata.font }}', sans-serif;
       --fig-panel: #1e2330;        /* figure panel bg — contrast vs #e6edf3 text ≥ 9:1 (WCAG AA) */
       --fig-panel-border: #2d3548;
@@ -46,6 +56,8 @@
       --text: #1f2328;
       --muted: #656d76;
       --slide-frame: #a0aab4;      /* slide outer border — visible on light bg */
+      --link: #1a7f37;             /* link on light — 5.1:1 vs #ffffff (WCAG AA) */
+      --link-visited: #8250df;     /* visited on light — 5.1:1 vs #ffffff (WCAG AA) */
       --fig-panel: #eef1f5;        /* figure panel bg — contrast vs #1f2328 text ≥ 11:1 (WCAG AA) */
       --fig-panel-border: #d0d7de;
       --accent: {% if deck.metadata.accent_color %}{{ deck.metadata.accent_color }}{% else %}#b06800{% endif %};
@@ -61,6 +73,20 @@
       color: var(--text);
       font-family: var(--font-family);
     }
+
+    /* Links inside a slide.
+       Without these the browser falls back to its defaults, #0000EE and #551A8B,
+       which measure 2.0:1 and 1.7:1 against the dark background — under the 3:1
+       floor for any text, let alone the 4.5:1 AA needs for body copy. Scoped to
+       the slide sections so .skip-link and the footer nav keep their own colours. */
+    section[role="group"] a {
+      color: var(--link);
+      text-decoration-thickness: 1px;
+      text-underline-offset: 2px;
+    }
+    section[role="group"] a:visited { color: var(--link-visited); }
+    section[role="group"] a:hover,
+    section[role="group"] a:focus-visible { color: var(--accent); }
 
     .skip-link {
       position: absolute;
@@ -311,7 +337,7 @@
       text-wrap: balance;
     }
     .slide-heading-stack--standard {
-      font-size: calc(52px * var(--title-font-mul));
+      font-size: calc(64px * var(--title-font-mul));
     }
     .slide-heading-stack--standard h2 {
       font-size: 1em;
@@ -366,7 +392,7 @@
     }
 
     h2 {
-      font-size: calc(52px * var(--title-font-mul));
+      font-size: calc(64px * var(--title-font-mul));
       font-weight: 700;
       line-height: 1.1;
       text-wrap: balance;
@@ -626,7 +652,8 @@
     .two-col-both img { max-height: var(--two-col-both-fig-max-height); }
 
     blockquote {
-      font-size: calc(44px * var(--content-font-mul));
+      /* deck/slide blockquote_scale multiplies on top of content_scale */
+      font-size: calc(44px * var(--content-font-mul) * var(--blockquote-scale, 1));
       font-style: italic;
       border-left: 4px solid var(--accent);
       padding-left: 1.5rem;
@@ -645,12 +672,30 @@
       line-height: 1.6;
     }
     pre:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
-    code { font-family: 'IBM Plex Mono', monospace; font-size: calc(20px * var(--content-font-mul)); }
+    /* 1em, not a fixed px: inline code then matches the size of whatever text it
+       sits in — body 28px, table 23.04px, hero 34px — instead of being pinned to
+       20px and rendering at 71% of the prose around it. Inside a <pre>, 1em
+       resolves to that pre's own font-size, so code panels keep their density. */
+    code { font-family: 'IBM Plex Mono', monospace; font-size: 1em; }
 
     /* Descendant selector on purpose: the section ALSO carries class
        "slide-code" (slide-{layout}), and capping the section's height breaks
        the fixed 1280x720 layer. Only the inner Pygments wrapper is capped. */
-    section .slide-code { overflow: auto; max-height: 540px; border-radius: 0.5rem; }
+    /* Fixed height, not max-height: the panel is the same box on every code slide,
+       so content_scale changes the font without moving the panel. Short listings
+       leave empty space inside the box rather than shrink-wrapping. */
+    section .slide-code { overflow: auto; height: 540px; border-radius: 0.5rem; }
+    /* The wrapper's fixed height is the ONLY cap. Without this the global
+       pre max-height (504px) clamps the inner pre 36px short of its own panel
+       in plain (no-linenos) mode, nesting a second scroll container inside the
+       first. Linenos mode already does this on .slide-codetable td.code pre. */
+    section .slide-code pre { max-height: none; }
+    /* A code slide carrying prose below the panel cannot also give the panel a
+       fixed 540px: 540 + heading + body overflows the 720px layer. Here the
+       panel shrink-wraps its listing and is capped instead, so the prose is
+       always on screen. Plain code slides keep the fixed box above. */
+    section.code-with-body .slide-code { height: auto; max-height: 400px; }
+    section.code-with-body .slide-body { margin-top: 1rem; }
     /* In linenos mode the table (not a pre) is the outermost box, so it must
        carry the panel chrome the global pre rule provides in plain mode.
        border-collapse must stay 'separate': 'collapse' discards table padding. */
@@ -1390,9 +1435,10 @@
     {% set extra_class = '' %}
     {% if slide.layout == 'figure' and not slide.body %}{% set extra_class = ' figure-only' %}{% endif %}
     {% if slide.layout == 'diagram' and not slide.body %}{% set extra_class = ' diagram-only' %}{% endif %}
+    {% if slide.layout == 'code' and s.rendered_body %}{% set extra_class = extra_class ~ ' code-with-body' %}{% endif %}
     {% if title_has_math %}{% set extra_class = extra_class ~ ' slide-heading-math' %}{% endif %}
     {% if s.math_display_center|default(true) %}{% set extra_class = extra_class ~ ' math-display-eq-center' %}{% else %}{% set extra_class = extra_class ~ ' math-display-eq-start' %}{% endif %}
-    <section id="{{ slide_id }}" role="group" class="slide-{{ slide.layout }}{{ extra_class }}"{% if s.bullet_stagger_json %} data-bullet-stagger="{{ s.bullet_stagger_json | e }}"{% endif %}{% if s.bullet_focus_json %} data-bullet-focus="{{ s.bullet_focus_json | e }}"{% endif %} style="--title-scale: {{ s.title_scale }}; --content-scale: {{ s.content_scale }}; --math-display-scale: {{ s.math_display_scale }};{% if s.math_display_color %} --math-display-color: {{ s.math_display_color | e }};{% endif %}{% if slide.layout in ['figure', 'figure-wide'] and s.figure_scale is not none %} --figure-scale: {{ s.figure_scale }};{% endif %}{% if s.panel_scale_x is not none %} --panel-scale-x: {{ s.panel_scale_x }}; --panel-scale-y: {{ s.panel_scale_y }};{% endif %}" aria-roledescription="slide" aria-label="Slide {{ loop.index }} of {{ total }}" aria-labelledby="{{ slide_id }}-heading">
+    <section id="{{ slide_id }}" role="group" class="slide-{{ slide.layout }}{{ extra_class }}"{% if s.bullet_stagger_json %} data-bullet-stagger="{{ s.bullet_stagger_json | e }}"{% endif %}{% if s.bullet_focus_json %} data-bullet-focus="{{ s.bullet_focus_json | e }}"{% endif %} style="--title-scale: {{ s.title_scale }}; --content-scale: {{ s.content_scale }}; --blockquote-scale: {{ s.blockquote_scale }}; --math-display-scale: {{ s.math_display_scale }};{% if s.math_display_color %} --math-display-color: {{ s.math_display_color | e }};{% endif %}{% if slide.layout in ['figure', 'figure-wide'] and s.figure_scale is not none %} --figure-scale: {{ s.figure_scale }};{% endif %}{% if s.panel_scale_x is not none %} --panel-scale-x: {{ s.panel_scale_x }}; --panel-scale-y: {{ s.panel_scale_y }};{% endif %}" aria-roledescription="slide" aria-label="Slide {{ loop.index }} of {{ total }}" aria-labelledby="{{ slide_id }}-heading">
       {% include slide.layout ~ '.html.j2' %}
     </section>
     {% endfor %}
@@ -1696,43 +1742,131 @@
 
     // Autofit is CONTENT-driven (the canvas is a fixed 1280x720), so it runs
     // on content signals — load, fonts, post-Mermaid — never per-resize.
-    // Any slide whose content exceeds its box (either axis) is shrunk with
-    // CSS `zoom` PAIRED WITH an inverse width/height, so the rendered box
-    // stays exactly 1280x720 while the internal coordinate space grows —
-    // text re-wraps to the wider space. Overflow is detected by comparing
-    // scrollHeight/Width to clientHeight/Width (same coordinate space under
-    // zoom — comparing against the 720 constant ratchets every slide to the
-    // floor, because zoom rescales the element's internal coordinates).
-    // Iterated because shrinking re-wraps and changes the measured size.
+    // Title and content are fitted SEPARATELY, the way a title placeholder and
+    // a content placeholder are in PowerPoint or Keynote:
+    //  - the heading stack keeps its declared size, and is shrunk (to
+    //    TITLE_FLOOR) only when its own text does not fit one line; a title
+    //    that cannot fit one line even at TITLE_FLOOR takes two lines at
+    //    full size instead;
+    //  - the content area gets whatever height the heading leaves it — its
+    //    flex budget at zoom 1 — and the LARGEST zoom z <= 1 at which its
+    //    content fits that budget is found by bisection. A slide that fits
+    //    at its declared sizes is left alone.
+    // zoom is paired with an inverse width/height so the rendered box stays
+    // the budget while the internal coordinate space grows and text re-wraps
+    // to the wider space; width growth is capped at WIDEN_MAX so lines stay
+    // readable (a capped box renders narrower than the slide, centered).
+    // Overflow is detected by comparing scrollHeight/Width to
+    // clientHeight/Width (same coordinate space under zoom).
+    // Below FLOOR the content is left at FLOOR, starts under the title and
+    // runs past the canvas (the section's overflow-y:auto scrolls), and the
+    // slide is reported (console.warn and window.__mdToYamlAutofitReport())
+    // as needing a split.
     // Runs over ALL slides — visibility:hidden preserves layout, so hidden
     // slides measure correctly (and the boundary audit sees every slide
-    // post-fit). The 0.4 floor keeps a pathological slide legible: below it,
-    // the section's overflow-y:auto scrolls instead of clipping.
+    // post-fit). Slides with no content area (title, divider) fit the whole
+    // section instead.
+    // The three limits come from the deck front matter (CSS_CONTROLS.md):
+    // autofit_floor, autofit_widen_max, autofit_title_floor.
+    function deckNum(attr, dflt) {
+      var v = parseFloat(htmlEl.getAttribute(attr) || '');
+      return isFinite(v) && v > 0 ? v : dflt;
+    }
+    var FLOOR = deckNum('data-deck-autofit-floor', 0.5);
+    var WIDEN_MAX = deckNum('data-deck-autofit-widen-max', 1.6);
+    var TITLE_FLOOR = deckNum('data-deck-autofit-title-floor', 0.8);
+    var autofitReport = [];
+    // Set zoom z with an inverse box: w/h are the box's INTERNAL size in px
+    // (undefined leaves that axis alone). z === 1 clears everything.
+    function setBox(el, z, w, h) {
+      var on = z !== 1;
+      el.style.zoom = on ? String(z) : '';
+      el.style.width = on && w != null ? w + 'px' : '';
+      el.style.height = on && h != null ? h + 'px' : '';
+      el.style.flex = on ? 'none' : '';
+    }
+    function overflows(el) {
+      return el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1;
+    }
+    // A table scrolls inside its wrapper rather than overflowing the content
+    // area; on a slide it should shrink to fit instead, so a scrolling
+    // wrapper counts as overflow. (pre keeps its own max-height by design.)
+    function contentOverflows(ca) {
+      if (overflows(ca)) return true;
+      var tw = ca.querySelectorAll('.table-scroll-wrapper');
+      for (var i = 0; i < tw.length; i++) if (overflows(tw[i])) return true;
+      return false;
+    }
+    // Largest z in [lo, 1] for which fits(z) holds, or lo if nothing fits.
+    // fits() applies the candidate, so the element is left at the result.
+    // 8 probes give 0.2% precision.
+    function bisect(lo, fits) {
+      if (fits(1)) return 1;
+      if (!fits(lo)) return lo;
+      var hi = 1;
+      for (var i = 0; i < 8; i++) {
+        var z = (lo + hi) / 2;
+        if (fits(z)) lo = z; else hi = z;
+      }
+      fits(lo);
+      return lo;
+    }
     function autofitAll() {
-      slides.forEach(function(s) {
-        s.style.zoom = ''; s.style.width = ''; s.style.height = '';  // reset before measuring
-        var z = 1, guard = 0;
-        // Content painting into the section's padding band (e.g. past a
-        // panel-shaped content area) never overflows the section box, so
-        // also require the content area to contain its children.
+      autofitReport = [];
+      var deckFit = parseFloat(getComputedStyle(deckRoot).getPropertyValue('--deck-fit-scale')) || 1;
+      slides.forEach(function(s, i) {
+        var hd = s.querySelector('.slide-heading-stack');
         var ca = s.querySelector('.slide-content-area');
-        function caRatio() {
-          if (!ca || ca.scrollHeight <= ca.clientHeight + 1) return 1;
-          return ca.clientHeight / ca.scrollHeight;
+        var r = { slide: i + 1, title: 1, content: 1, floor: false, over: 0 };
+        setBox(s, 1); if (hd) setBox(hd, 1); if (ca) setBox(ca, 1);
+        // A flex item's min-height:auto lets the content area grow to its
+        // content, so the SECTION overflows and the area never does. Pin it
+        // to its flex budget so its own scrollHeight reports the overflow.
+        if (ca) {
+          ca.style.alignSelf = ''; ca.style.minHeight = '0'; ca.style.justifyContent = '';
         }
-        while ((s.scrollHeight > s.clientHeight + 1 || s.scrollWidth > s.clientWidth + 1
-                || caRatio() < 1)
-               && z > 0.4 && guard < 4) {
-          z = Math.max(0.4, z * Math.min(s.clientHeight / s.scrollHeight,
-                                         s.clientWidth / s.scrollWidth,
-                                         caRatio()) * 0.98);  // 2% margin
-          s.style.zoom = String(z);
-          s.style.width = (CW / z) + 'px';        // inverse size: rendered box
-          s.style.height = (CH / z) + 'px';       // stays exactly 1280x720
-          guard++;
+        if (!ca) {
+          // Title/divider slide: whole section, box stays 1280x720.
+          r.content = bisect(FLOOR, function(z) {
+            setBox(s, z, CW / z, CH / z);
+            return !overflows(s);
+          });
+          if (r.content === FLOOR && overflows(s)) r.floor = true;
+        } else {
+          var h2 = hd && hd.querySelector('h1, h2');
+          if (h2) {
+            // Rendered height of one line at zoom 1; a title may take two.
+            var line1 = parseFloat(getComputedStyle(h2).lineHeight) * deckFit;
+            var hw = hd.clientWidth;
+            function titleFits(lines) {
+              return function(z) {
+                setBox(hd, z, hw / z);
+                return h2.getBoundingClientRect().height <= lines * line1 * z + 1;
+              };
+            }
+            r.title = bisect(TITLE_FLOOR, titleFits(1));
+            if (r.title === TITLE_FLOOR && !titleFits(1)(TITLE_FLOOR)) r.title = bisect(TITLE_FLOOR, titleFits(2));
+          }
+          var B = ca.clientHeight, W = ca.clientWidth;   // the flex budget
+          r.content = bisect(FLOOR, function(z) {
+            var w = Math.min(W / z, W * WIDEN_MAX);
+            setBox(ca, z, w, B / z);
+            ca.style.alignSelf = (z !== 1 && w < W / z) ? 'center' : '';
+            return !contentOverflows(ca);
+          });
+          if (r.content === FLOOR && contentOverflows(ca)) {
+            r.floor = true;
+            r.over = Math.round((ca.scrollHeight / ca.clientHeight - 1) * 100);
+            ca.style.justifyContent = 'flex-start';   // spill down, not over the title
+          }
         }
+        if (r.floor) console.warn('autofit: slide ' + r.slide + ' exceeds its content budget' +
+                                  (r.over ? ' by ' + r.over + '%' : '') + ' at zoom ' + FLOOR +
+                                  '; consider splitting it.');
+        autofitReport.push(r);
       });
     }
+    window.__mdToYamlAutofitReport = function() { return autofitReport.slice(); };
     window.__mdToYamlAutofitAll = autofitAll;
     autofitAll();
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(autofitAll);

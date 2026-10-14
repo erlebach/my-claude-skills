@@ -100,19 +100,51 @@ when either:
 If you find yourself stacking several complete alternative programs in `cases:`, convert
 them to dropdown tabs. See `reference/PATTERN.md` §4 (tabs) vs §5 (stacked cases).
 
-**Tab-label glyphs (locked rule — correct vs mistake).** When an example contains a
-**mistake** variant — one the lesson warns against, whether it fails at **compile**,
-**link**, *or* **runtime** (a crash, UB, a leak, or plain wrong output) — prefix a glyph
-to **every** tab label of that example so the precomputed verdict is visible in the tab
-bar: `✅ ` on each correct/recommended variant, `❌ ` on the mistake. The glyph is a
-*pedagogical* verdict, not the compile outcome: a `❌` tab may compile fine and only fail
-at runtime (e.g. a double-free), and a `✅` tab may deliberately fail to compile (e.g.
-adding `override` to surface a typo). Leave an example **unglyphed** when all its tabs are
-legitimate variations with no wrong side (different types, sizes, ownership counts, or a
-pure mechanism contrast) — glyphing those is noise. The glyph goes in the dropdown
-`options:` entry *and* its matching `value_map:` key (and the `default:` if it names that
-option) — they must stay byte-identical. This is the manual convention that resolved the
-tab-compile-status request; the engine does not auto-render these glyphs.
+**Tab-label glyphs (locked rule — the glyph reports the build).** Author's rule,
+2026-08-29: *"if it is green, then compilation was successful. Very simple."* The glyph
+says what the compiler and the run actually did. It does **not** say whether the code is
+good practice, and it never contradicts the badge below it.
+
+| Glyph | The program on this tab | Badge |
+|---|---|---|
+| `✅` | compiles, runs, output as intended | `✓ Compiled` |
+| `✅⚠️` | same — but the page disapproves, or warns | `✓ Compiled` |
+| `⚠️` | compiles and runs, and the result is wrong or misleading | `✓ Compiled` |
+| `❌` | does not compile | `❌ Compile failed` |
+| `💥` | compiles, then crashes | `💥 Runtime error` |
+
+Correct code always keeps its green check; the amber is added **beside** it, never instead.
+The sorting test is checkable: *does this tab print something wrong, or am I only
+disapproving of it?* Whether a design is recommended lives in the **label and the Key
+Idea, in words** — `❌ ownership in the type (the bug can't compile)` says it better than a
+green tick did.
+
+**This replaces the pre-2026-08-29 rule**, under which the glyph marked the *practice*, so
+a `✅` tab could deliberately fail to compile because "the error is the catch". That put a
+green check above a red `Compile failed` badge on ten tabs, and a reader cannot tell which
+of two axes a glyph is on.
+
+**The label does not repeat the glyph** (2026-08-29). Write `❌ non-mutable`, not
+`❌ non-mutable (compile error)`; `✅ return Vec2 by value`, not `✅ Correct: return Vec2 by
+value`. Keep only words the glyph cannot say: `(link error)` — a link error is not a
+compile error and `❌` cannot tell them apart; `(terminate)` — names `std::terminate`
+rather than "it crashed".
+
+Leave an example **unglyphed** when all its tabs are legitimate variations with no wrong
+side (different types, sizes, ownership counts, or a pure mechanism contrast) — glyphing
+those is noise. Never glyph *some* tabs of one dropdown and not the others.
+
+Only `✅ ❌ 💥 ⚠️` carry their own colour (`⚠️` needs U+FE0F). `✗` (U+2717) and a bare `⚠`
+(U+26A0) have no emoji presentation and render **black** in a tab label, which has no CSS
+colour to inherit.
+
+The glyph goes in the dropdown `options:` entry *and* its matching `value_map:` key (and
+the `default:` if it names that option) — byte-identical — and in every `diagram_spec` or
+`aside_html` key, demo prose and module test that names the label. Sweep with grep, never
+a semantic search: a label containing a quote is written `\"` inside a double-quoted YAML
+scalar, and a test may write the glyph as a `\uXXXX` escape. The engine does not
+auto-render these glyphs; `cpp_labs/tests/test_glyph_matches_badge.py` fails if any glyph
+disagrees with its badge.
 
 Confirm the list before generating any files.
 

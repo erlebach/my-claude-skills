@@ -296,7 +296,7 @@
           "anyOf": [
             {
               "maximum": 4.0,
-              "minimum": 0.75,
+              "minimum": 0.25,
               "type": "number"
             },
             {
@@ -306,6 +306,21 @@
           "default": null,
           "description": "Override deck content_scale for this slide (None = use deck default).",
           "title": "Content Scale"
+        },
+        "blockquote_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck blockquote_scale for this slide (None = use deck default).",
+          "title": "Blockquote Scale"
         },
         "mermaid_scale_mode": {
           "anyOf": [
@@ -558,7 +573,7 @@
           "anyOf": [
             {
               "maximum": 4.0,
-              "minimum": 0.75,
+              "minimum": 0.25,
               "type": "number"
             },
             {
@@ -568,6 +583,21 @@
           "default": null,
           "description": "Override deck content_scale for this slide (None = use deck default).",
           "title": "Content Scale"
+        },
+        "blockquote_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck blockquote_scale for this slide (None = use deck default).",
+          "title": "Blockquote Scale"
         },
         "mermaid_scale_mode": {
           "anyOf": [
@@ -723,7 +753,7 @@
           "anyOf": [
             {
               "maximum": 4.0,
-              "minimum": 0.75,
+              "minimum": 0.25,
               "type": "number"
             },
             {
@@ -733,6 +763,21 @@
           "default": null,
           "description": "Override deck content_scale for this slide (None = use deck default).",
           "title": "Content Scale"
+        },
+        "blockquote_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck blockquote_scale for this slide (None = use deck default).",
+          "title": "Blockquote Scale"
         },
         "mermaid_scale_mode": {
           "anyOf": [
@@ -956,6 +1001,30 @@
           "title": "Remember View Scale",
           "type": "boolean"
         },
+        "autofit_floor": {
+          "default": 0.5,
+          "description": "Smallest zoom autofit applies to a slide's content area. Below it the content scrolls and the slide is reported as needing a split.",
+          "maximum": 1.0,
+          "minimum": 0.25,
+          "title": "Autofit Floor",
+          "type": "number"
+        },
+        "autofit_widen_max": {
+          "default": 1.6,
+          "description": "Cap on how much wider (x canvas width) the content area may become while shrinking, so lines stay readable. 1.0 = never widen (tables then cannot fit).",
+          "maximum": 3.0,
+          "minimum": 1.0,
+          "title": "Autofit Widen Max",
+          "type": "number"
+        },
+        "autofit_title_floor": {
+          "default": 0.8,
+          "description": "Smallest zoom autofit applies to a title that does not fit one line. A title that still does not fit takes two lines at full size.",
+          "maximum": 1.0,
+          "minimum": 0.5,
+          "title": "Autofit Title Floor",
+          "type": "number"
+        },
         "bake_mermaid": {
           "default": false,
           "description": "If True, pre-render Mermaid diagrams to inline SVG at compile time (requires mmdc); makes the deck offline and cross-browser deterministic.",
@@ -974,8 +1043,16 @@
           "default": 1.0,
           "description": "Multiplier for body, captions, tables, code, and non-title prose (combined with --font-scale).",
           "maximum": 4.0,
-          "minimum": 0.75,
+          "minimum": 0.25,
           "title": "Content Scale",
+          "type": "number"
+        },
+        "blockquote_scale": {
+          "default": 1.0,
+          "description": "Multiplier for `>` blockquotes on top of content_scale (a blockquote is 44px against 28px body, so 0.64 makes it body-sized).",
+          "maximum": 4.0,
+          "minimum": 0.25,
+          "title": "Blockquote Scale",
           "type": "number"
         },
         "figure_scale": {
@@ -1141,7 +1218,7 @@
           "anyOf": [
             {
               "maximum": 4.0,
-              "minimum": 0.75,
+              "minimum": 0.25,
               "type": "number"
             },
             {
@@ -1151,6 +1228,21 @@
           "default": null,
           "description": "Override deck content_scale for this slide (None = use deck default).",
           "title": "Content Scale"
+        },
+        "blockquote_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck blockquote_scale for this slide (None = use deck default).",
+          "title": "Blockquote Scale"
         },
         "mermaid_scale_mode": {
           "anyOf": [
@@ -1330,7 +1422,7 @@
           "anyOf": [
             {
               "maximum": 4.0,
-              "minimum": 0.75,
+              "minimum": 0.25,
               "type": "number"
             },
             {
@@ -1340,6 +1432,21 @@
           "default": null,
           "description": "Override deck content_scale for this slide (None = use deck default).",
           "title": "Content Scale"
+        },
+        "blockquote_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck blockquote_scale for this slide (None = use deck default).",
+          "title": "Blockquote Scale"
         },
         "mermaid_scale_mode": {
           "anyOf": [
@@ -1495,7 +1602,7 @@
           "anyOf": [
             {
               "maximum": 4.0,
-              "minimum": 0.75,
+              "minimum": 0.25,
               "type": "number"
             },
             {
@@ -1505,6 +1612,21 @@
           "default": null,
           "description": "Override deck content_scale for this slide (None = use deck default).",
           "title": "Content Scale"
+        },
+        "blockquote_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck blockquote_scale for this slide (None = use deck default).",
+          "title": "Blockquote Scale"
         },
         "mermaid_scale_mode": {
           "anyOf": [
@@ -1685,7 +1807,7 @@
           "anyOf": [
             {
               "maximum": 4.0,
-              "minimum": 0.75,
+              "minimum": 0.25,
               "type": "number"
             },
             {
@@ -1695,6 +1817,21 @@
           "default": null,
           "description": "Override deck content_scale for this slide (None = use deck default).",
           "title": "Content Scale"
+        },
+        "blockquote_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck blockquote_scale for this slide (None = use deck default).",
+          "title": "Blockquote Scale"
         },
         "mermaid_scale_mode": {
           "anyOf": [
@@ -1897,7 +2034,7 @@
           "anyOf": [
             {
               "maximum": 4.0,
-              "minimum": 0.75,
+              "minimum": 0.25,
               "type": "number"
             },
             {
@@ -1907,6 +2044,21 @@
           "default": null,
           "description": "Override deck content_scale for this slide (None = use deck default).",
           "title": "Content Scale"
+        },
+        "blockquote_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck blockquote_scale for this slide (None = use deck default).",
+          "title": "Blockquote Scale"
         },
         "mermaid_scale_mode": {
           "anyOf": [
@@ -2074,7 +2226,7 @@
           "anyOf": [
             {
               "maximum": 4.0,
-              "minimum": 0.75,
+              "minimum": 0.25,
               "type": "number"
             },
             {
@@ -2084,6 +2236,21 @@
           "default": null,
           "description": "Override deck content_scale for this slide (None = use deck default).",
           "title": "Content Scale"
+        },
+        "blockquote_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck blockquote_scale for this slide (None = use deck default).",
+          "title": "Blockquote Scale"
         },
         "mermaid_scale_mode": {
           "anyOf": [
@@ -2239,7 +2406,7 @@
           "anyOf": [
             {
               "maximum": 4.0,
-              "minimum": 0.75,
+              "minimum": 0.25,
               "type": "number"
             },
             {
@@ -2249,6 +2416,21 @@
           "default": null,
           "description": "Override deck content_scale for this slide (None = use deck default).",
           "title": "Content Scale"
+        },
+        "blockquote_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck blockquote_scale for this slide (None = use deck default).",
+          "title": "Blockquote Scale"
         },
         "mermaid_scale_mode": {
           "anyOf": [
@@ -2416,7 +2598,7 @@
           "anyOf": [
             {
               "maximum": 4.0,
-              "minimum": 0.75,
+              "minimum": 0.25,
               "type": "number"
             },
             {
@@ -2426,6 +2608,21 @@
           "default": null,
           "description": "Override deck content_scale for this slide (None = use deck default).",
           "title": "Content Scale"
+        },
+        "blockquote_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck blockquote_scale for this slide (None = use deck default).",
+          "title": "Blockquote Scale"
         },
         "mermaid_scale_mode": {
           "anyOf": [
@@ -2581,7 +2778,7 @@
           "anyOf": [
             {
               "maximum": 4.0,
-              "minimum": 0.75,
+              "minimum": 0.25,
               "type": "number"
             },
             {
@@ -2591,6 +2788,21 @@
           "default": null,
           "description": "Override deck content_scale for this slide (None = use deck default).",
           "title": "Content Scale"
+        },
+        "blockquote_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck blockquote_scale for this slide (None = use deck default).",
+          "title": "Blockquote Scale"
         },
         "mermaid_scale_mode": {
           "anyOf": [
@@ -2766,7 +2978,7 @@
           "anyOf": [
             {
               "maximum": 4.0,
-              "minimum": 0.75,
+              "minimum": 0.25,
               "type": "number"
             },
             {
@@ -2776,6 +2988,21 @@
           "default": null,
           "description": "Override deck content_scale for this slide (None = use deck default).",
           "title": "Content Scale"
+        },
+        "blockquote_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck blockquote_scale for this slide (None = use deck default).",
+          "title": "Blockquote Scale"
         },
         "mermaid_scale_mode": {
           "anyOf": [
@@ -2972,7 +3199,7 @@
           "anyOf": [
             {
               "maximum": 4.0,
-              "minimum": 0.75,
+              "minimum": 0.25,
               "type": "number"
             },
             {
@@ -2982,6 +3209,21 @@
           "default": null,
           "description": "Override deck content_scale for this slide (None = use deck default).",
           "title": "Content Scale"
+        },
+        "blockquote_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck blockquote_scale for this slide (None = use deck default).",
+          "title": "Blockquote Scale"
         },
         "mermaid_scale_mode": {
           "anyOf": [
@@ -3149,7 +3391,7 @@
           "anyOf": [
             {
               "maximum": 4.0,
-              "minimum": 0.75,
+              "minimum": 0.25,
               "type": "number"
             },
             {
@@ -3159,6 +3401,21 @@
           "default": null,
           "description": "Override deck content_scale for this slide (None = use deck default).",
           "title": "Content Scale"
+        },
+        "blockquote_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck blockquote_scale for this slide (None = use deck default).",
+          "title": "Blockquote Scale"
         },
         "mermaid_scale_mode": {
           "anyOf": [
@@ -3350,7 +3607,7 @@
           "anyOf": [
             {
               "maximum": 4.0,
-              "minimum": 0.75,
+              "minimum": 0.25,
               "type": "number"
             },
             {
@@ -3360,6 +3617,21 @@
           "default": null,
           "description": "Override deck content_scale for this slide (None = use deck default).",
           "title": "Content Scale"
+        },
+        "blockquote_scale": {
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.25,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override deck blockquote_scale for this slide (None = use deck default).",
+          "title": "Blockquote Scale"
         },
         "mermaid_scale_mode": {
           "anyOf": [

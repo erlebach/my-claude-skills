@@ -8,5 +8,9 @@
     <pre tabindex="0" role="region" aria-label="{{ slide.language | e }} code"><code class="language-{{ slide.language | e }}">{% if slide.body %}{{ slide.body | e }}{% endif %}</code></pre>
   {% endif %}
 </div>
+{# Prose after the closing fence. Mirrors figure.html.j2 — the panel is not the
+   whole slide. Gated on rendered_body, not slide.body: a code slide's body is
+   always non-empty, but it is only prose when the engine split some off. #}
+{% if rendered_body %}<div class="slide-body">{{ rendered_body | safe }}</div>{% endif %}
 </div>
 {% if slide.notes %}<aside class="slide-notes" hidden aria-hidden="true">{{ slide.notes | e }}</aside>{% endif %}
