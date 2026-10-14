@@ -2,7 +2,7 @@
 
 Use this prompt for verification check 3. Fill in the two paths. Run it in a fresh subagent that has not seen the rewrite being written: a writer who checks their own rewrite reads what they meant to write, not what they wrote.
 
-Default model: `haiku` (Haiku 5.5). Use `sonnet` when the user asks for it, or when the text is a specification, rubric or policy and the user wants the stronger check.
+Model: for an explanation or a guide, one run with `haiku` (Haiku 5.5). For a specification, rubric or policy, two runs in parallel with this same prompt, one with `haiku` and one with `sonnet` at `effort: low`; merge the two sets of findings.
 
 ---
 
@@ -36,6 +36,8 @@ Then read the rewrite once more and list anything it says that is not in the sou
 
 Do not report KEPT items. Do not report changes of wording that keep the meaning, such as a long sentence split into two, a list made from a sentence, or "check" replaced by "examine". Do not report code blocks, links or numbers that are byte-identical; a script already checks those. Do not report an added `draft: true` in the front matter; it is added on purpose so the rewrite does not publish.
 
+In a specification, the rewrite adds MUST, MUST NOT, SHOULD and MAY on purpose. When the source already states a rule — as a fact ("Every regression test passes on `tests_before`") or as a plain instruction ("Leave `starter/` as it is") — and the rewrite writes the same rule with MUST or MUST NOT, do not report it as a finding. List it once, at the end, under "Requirement words added", with one line per item. Do not report the short paragraph that defines MUST, MUST NOT, SHOULD and MAY; the rewrite adds it on purpose. Report it as CHANGED only when the strength differs: a recommendation became MUST, a rule became SHOULD, MAY or "can", or a rule became a description.
+
 Write your answer in this format and nothing else:
 
 ```
@@ -52,6 +54,10 @@ VERDICT: <PASS if no MISSING, CHANGED or ADDED items; else FAIL>
    Source: "<exact quote>"
    Rewrite: (none)
    Difference: <one sentence>
+
+## Requirement words added (no change of meaning)
+
+- "<source quote>" → "<rewrite quote>"
 ```
 
 Quote both texts exactly, so the finding can be checked with a text search. If you are not sure whether an item changed, report it and write "UNSURE" at the start of the Difference line. A false alarm costs the author one look; a missed change can reach students.

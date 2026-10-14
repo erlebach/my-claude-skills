@@ -58,6 +58,7 @@ Global memory rules also apply, in particular `~/.claude/memory/feedback/plain-l
     - **MAY** — allowed, not required.
 - Define them once, near the top of the document, in one short sentence or a small table.
 - Do not use the lowercase words *must*, *should* or *may* for anything else in that document. Lowercase "should" in a specification makes a reader ask whether it is required. Use "can", "is expected to" or a plain statement of fact instead.
+- This applies only to specifications, rubrics and policies. In an explanation or a guide, *must*, *should* and *may* are ordinary words: keep them. Do not replace "your answer should say it" with "your answer says it"; that turns an instruction into a description.
 - Each requirement is one sentence that a reader can test: what is required, of what, and how it is checked. "`refactor.diff` MUST be the output of `diff -ru before after`" — not "the diff should be a proper one".
 
 ### What never changes in a rewrite
@@ -105,10 +106,13 @@ The scripts are in `~/.claude/skills/plain-technical-english/scripts/` (below, `
     ```
 
 3. **Meaning (subagent, on by default, can be turned off).** A fresh subagent compares the two texts item by item and reports what is missing, changed or added, with exact quotes from both. Its prompt is in `references/meaning-check.md`; fill in the two paths and pass it to the Agent tool. It must be a new agent, not the one that wrote the rewrite.
-    - **Model:** `haiku` (Haiku 5.5) by default. Use `sonnet` when the user asks for it, or for a specification, rubric or policy where the user wants the stronger check.
+    - **Model, for an explanation or a guide:** one check with `haiku` (Haiku 5.5).
+    - **Model, for a specification, rubric or policy:** two checks in parallel, one with `haiku` and one with `sonnet` at `effort: low`. Merge their findings and remove duplicates. In a test on the HW4 pages (2026-10-13), each model found about half of the real changes that the other missed, and neither found them all.
+    - **Another model:** use it when the user asks for it.
     - **Turn it off** when the user says so ("no meaning check", "skip check 3", "scripts only"), and for short text such as a reply, a commit message or a paragraph under about 150 words. Say in the reply that check 3 did not run.
     - **Many files:** run one subagent per file, in parallel.
     - **Before you report a finding,** search for its two quotes in the files. Drop a finding whose quotes are not there, and say how many you dropped.
+    - **For a MISSING finding,** there is no rewrite quote to search for. Search the rewrite for a short, distinctive phrase from the source quote (for example "Only taught gates are graded"). If the phrase is there, the finding is a false alarm: drop it and count it.
 
 ## Example
 
