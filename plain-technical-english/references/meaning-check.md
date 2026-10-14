@@ -38,6 +38,11 @@ Do not report KEPT items. Do not report changes of wording that keep the meaning
 
 In a specification, the rewrite adds MUST, MUST NOT, SHOULD and MAY on purpose. When the source already states a rule — as a fact ("Every regression test passes on `tests_before`") or as a plain instruction ("Leave `starter/` as it is") — and the rewrite writes the same rule with MUST or MUST NOT, do not report it as a finding. List it once, at the end, under "Requirement words added", with one line per item. Do not report the short paragraph that defines MUST, MUST NOT, SHOULD and MAY; the rewrite adds it on purpose. Report it as CHANGED only when the strength differs: a recommendation became MUST, a rule became SHOULD, MAY or "can", or a rule became a description.
 
+The requirement words can also appear as a shortcode, `{{< req must >}}`, `{{< req "must not" >}}`, `{{< req should >}}`, `{{< req may >}}`. Read each one as the capital word it names.
+
+<!-- For a rubric, replace the paragraph above with this one: the skill removes the requirement words from rubrics. -->
+In a rubric, the rewrite removes MUST, MUST NOT and MAY on purpose. It says once, near the top, that every condition on the page is required, and writes each condition as a statement of what the grader checks ("`X` MUST be Y" becomes "`X` is Y"). A MUST that became such a statement or an imperative is not a finding: list it at the end, under "Requirement words removed". Report CHANGED only when the strength differs: a required condition now reads as optional, as a recommendation, or as something that may or may not happen; or an allowed option now reads as required or forbidden.
+
 Write your answer in this format and nothing else:
 
 ```

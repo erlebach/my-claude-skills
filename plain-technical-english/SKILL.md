@@ -11,7 +11,7 @@ A writing standard for technical and teaching text. It combines three sources an
 |---|---|---|
 | Plain language (ISO 24495-1:2023; US Federal Plain Language Guidelines; Google developer documentation style guide) | The base: the reader can find what they need, understand it, and use it. Address the reader as "you". Main point first. | Nothing; this is the frame. |
 | ASD-STE100 (Simplified Technical English) | Structure rules: one instruction per sentence, numbered steps, imperative, active voice, sentence and paragraph length limits, articles kept, one word for one meaning. | The fixed ~900-word dictionary, the ban on *-ing* forms, and anything that removes a precise term. |
-| RFC 2119 / RFC 8174 | MUST, MUST NOT, SHOULD, SHOULD NOT, MAY for requirements, with fixed meanings. | Use outside specifications, rubrics and rules. |
+| RFC 2119 / RFC 8174 | must, must not, should, should not, may for requirements, with fixed meanings, marked in small capitals (or capitals outside Hugo). | Use outside specifications, homework pages and policies, and in rubrics. |
 
 Why not full STE: its dictionary was built for aircraft maintenance. It has no words for many ideas in software and teaching (*scope creep*, *trade-off*, *grounding*), and forcing them into approved words loses precision. In one test, "however the block is left" became "all the ways that the program can go out of the block", which no longer clearly includes an early `return` or an exception. Precision wins over vocabulary rules.
 
@@ -52,14 +52,19 @@ Global memory rules also apply, in particular `~/.claude/memory/feedback/plain-l
 
 ### Requirements (specifications, homework, rubrics, policies)
 
-- Use MUST, MUST NOT, SHOULD, SHOULD NOT and MAY in capitals, with the RFC 2119 meanings:
-    - **MUST / MUST NOT** — required; failing it fails the requirement.
-    - **SHOULD / SHOULD NOT** — recommended; there can be a valid reason to do otherwise, and the writer says what it costs.
-    - **MAY** — allowed, not required.
-- Define them once, near the top of the document, in one short sentence or a small table.
-- Do not use the lowercase words *must*, *should* or *may* for anything else in that document. Lowercase "should" in a specification makes a reader ask whether it is required. Use "can", "is expected to" or a plain statement of fact instead.
-- This applies only to specifications, rubrics and policies. In an explanation or a guide, *must*, *should* and *may* are ordinary words: keep them. Do not replace "your answer should say it" with "your answer says it"; that turns an instruction into a description.
-- Each requirement is one sentence that a reader can test: what is required, of what, and how it is checked. "`refactor.diff` MUST be the output of `diff -ru before after`" — not "the diff should be a proper one".
+- Use the requirement words must, must not, should, should not and may with the RFC 2119 meanings:
+    - **must / must not**: required; failing it fails the requirement.
+    - **should / should not**: recommended; there can be a valid reason to do otherwise, and the writer says what it costs.
+    - **may**: allowed, not required.
+- **How to mark them** (author's choice, 2026-10-14; full capitals were too loud, italics read as emphasis, underline reads as a link):
+    - **On a Hugo site with a `req` shortcode** (the ISC5305 `course_site` has one): small capitals, through the shortcode: `{{< req must >}}`, `{{< req "must not" >}}`, `{{< req should >}}`, `{{< req "should not" >}}`, `{{< req may >}}`. The shortcode accepts only these five words. Do not mix it with capital MUST in the same file.
+    - **Anywhere else** (plain Markdown, a README, a commit message): capitals, MUST / SHOULD / MAY.
+- Define them once, near the top of the document, in one short sentence or a small table. Say how they look: "the words in small capitals have fixed meanings".
+- Do not use the plain lowercase words *must*, *should* or *may* for anything else in that document. Lowercase "should" in a specification makes a reader ask whether it is required. Use "can", "is expected to" or a plain statement of fact instead.
+- **Where to use them:** a specification, a homework page, a policy: the pages where a reader chooses what to do and must tell required from recommended from optional.
+- **A rubric does not use them.** In a rubric, almost every condition is required, and the heading ("Required for full marks:") already says so. Marking each one (60 times in the HW4 rubric) is noise. Write each condition as a statement of what the grader checks: "`refactor.diff` is the output of `diff -ru before after`". Near the top, say once that every condition on the page is required. If a rubric item is optional, say so in words ("you can use `valgrind` instead").
+- In an explanation or a guide, *must*, *should* and *may* are ordinary words: keep them, unmarked. Do not replace "your answer should say it" with "your answer says it"; that turns an instruction into a description.
+- Each requirement is one sentence that a reader can test: what is required, of what, and how it is checked. "`refactor.diff` {{< req must >}} be the output of `diff -ru before after`" — not "the diff should be a proper one".
 
 ### What never changes in a rewrite
 

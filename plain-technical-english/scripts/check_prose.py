@@ -14,6 +14,7 @@ Codes:
     INTENS    an intensifier that adds no information (exactly, genuinely, very, ...)
     PASSIVE   a possible passive verb ("is run", "were made"); a hint, not a rule
     REQWORD   with --spec: lowercase must/should/may, which reads as an unclear requirement
+    REQMIX    with --spec: capital MUST/SHOULD/MAY in a file that uses the {{< req >}} shortcode
 
 Skipped: YAML front matter, fenced code, tables, headings, HTML comments, and block quotes
 (quotations and example texts stay as written). Use --quotes to check block quotes too.
@@ -31,6 +32,7 @@ INTENSIFIERS = ["exactly", "genuinely", "precisely", "really", "very", "simply",
 INTENS_RE = re.compile(r"\b(" + "|".join(INTENSIFIERS) + r")\b", re.I)
 PASSIVE_RE = re.compile(r"\b(is|are|was|were|be|been|being)\s+(\w+ed|built|made|done|run|given|shown|written|taken|kept|found|seen)\b", re.I)
 REQ_RE = re.compile(r"\b(must|should|may)\b")
+REQCAPS_RE = re.compile(r"\b(MUST|SHOULD|MAY)\b")
 SENT_SPLIT_RE = re.compile(r"(?<=[.!?])[\"')\]*]*\s+(?=[A-Z`*\"(\[0-9])")
 
 
@@ -49,7 +51,9 @@ def sentences(text):
 
 def check(path, spec, quotes):
     """Check one file and return a list of (line number, code, message) findings."""
-    lines = open(path, encoding="utf-8").read().split("\n")
+    content = open(path, encoding="utf-8").read()
+    uses_req = "{{< req " in content
+    lines = content.split("\n")
     out = []
     fence = comment = False
     start = 0
@@ -82,7 +86,10 @@ def check(path, spec, quotes):
             out.append((n0, "PASSIVE", f"possible passive: '{m.group(0)}'"))
         if spec:
             for m in REQ_RE.finditer(text):
-                out.append((n0, "REQWORD", f"lowercase '{m.group(1)}': use MUST/SHOULD/MAY or plain wording"))
+                out.append((n0, "REQWORD", f"lowercase '{m.group(1)}': use a requirement word or plain wording"))
+            if uses_req:
+                for m in REQCAPS_RE.finditer(text):
+                    out.append((n0, "REQMIX", f"'{m.group(1)}' in capitals: this file uses {{{{< req {m.group(1).lower()} >}}}}"))
         para.clear()
 
     for i in range(start, len(lines)):
