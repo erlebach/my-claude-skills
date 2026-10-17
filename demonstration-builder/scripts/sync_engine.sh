@@ -6,8 +6,9 @@
 # so the skill ships the latest code. Run it in the source repo whenever you change
 # the engine, then commit the refreshed bundle.
 #
-# The drift guard `test_bundled_engine_matches_source` fails when the bundle lags the
-# source — that failure is your signal to run this.
+# The drift guard cpp_labs/tests/test_bundled_engine_matches_source.py (in the source
+# project, e.g. cpp_demos) fails when the bundle and the source differ — that failure is
+# your signal to run this. It reads MODULES and ASSETS below, so it always checks this list.
 #
 # Usage:
 #   .claude/skills/demonstration-builder/scripts/sync_engine.sh          # source = repo root
@@ -30,7 +31,7 @@ if [ ! -d "$SRC_PKG" ] || [ ! -f "$SOURCE/build_labs.sh" ]; then
   exit 1
 fi
 
-# The exact bundle file set — must stay in sync with test_bundled_engine_matches_source.
+# The exact bundle file set. test_bundled_engine_matches_source.py reads these two arrays.
 # compile_cache, project_runner and scaffold are imported by the engine since 2026-08 to
 # 2026-10 (build_html, topic_yaml, components, render_page); without them the bundle
 # cannot import (found 2026-10-17).
@@ -61,4 +62,4 @@ chmod +x "$ENGINE/build_labs.sh"
 find "$ENGINE" -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
 
 echo "synced bundle in $ENGINE/cpp_labs/ from $SRC_PKG"
-echo "verify: pytest cpp_labs/tests/test_demonstration_skill.py -q"
+echo "verify: python -m pytest cpp_labs/tests/test_bundled_engine_matches_source.py -q   (in $SOURCE)"
