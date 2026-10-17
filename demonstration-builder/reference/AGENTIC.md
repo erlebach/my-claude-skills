@@ -156,7 +156,7 @@ Conventions students see, proven across the series:
   `<details class="prompt-panel">` per variant, keyed by the exact tab label. The
   prompt switches with the tab.
 - **Page density: more, smaller examples.** Too much information per example turns
-  students off. Each example gets 1–2 tabs and one job; split a 3-tab mega-example.
+  students off. Each example gets one to three tabs (author, 2026-10-16) and one job; split a larger example.
   Label every example visibly ("Example 1 — …") — never let an "Example 2"
   reference appear without a visible "Example 1". Sidebar: **ONE** Main Takeaway
   concept per page (the engine renders each sidebar concept as its own panel, so
