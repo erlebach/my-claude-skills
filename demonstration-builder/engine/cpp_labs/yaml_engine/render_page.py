@@ -330,6 +330,9 @@ def _build_topic(args: dict, data: dict) -> str:
     column of that tab, above the Key Idea aside — which then moves inside the
     tabs (ENGINE_REQUEST_prompt-panel). ``diagram: false`` topics only.
 
+    ``concept_html`` (optional): raw author HTML inside the Key Idea box, below
+    its text, e.g. links to diagrams of the example's code.
+
     ``tab_label``, ``tab_notes``, ``tab_intro`` and ``extra_tabs`` (optional):
     name the compiled tab of a single-variant topic, add a note under a tab's
     console, add a note at the top of a tab, and append tabs of author HTML only (see :func:`components.demo_panel`).
@@ -338,6 +341,7 @@ def _build_topic(args: dict, data: dict) -> str:
                         diagram=args.get("diagram", True),
                         concept=args.get("concept"),
                         concept_title=args.get("concept_title", "Key Idea"),
+                        concept_html=args.get("concept_html", ""),
                         steps=args.get("steps"),
                         diagram_spec=args.get("diagram_spec"),
                         aside_html=args.get("aside_html"),

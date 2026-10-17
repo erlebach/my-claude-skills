@@ -1648,7 +1648,7 @@ def _paragraphs_html(text: str) -> str:
     )
 
 
-def _concept_aside_body(title: str, text: str) -> str:
+def _concept_aside_body(title: str, text: str, extra_html: str = "") -> str:
     """The Key Idea aside's inner markup, shared by both aside renderers.
 
     Extracted so the outer two-column panel (:func:`code_concept_panel`) and the
@@ -1656,10 +1656,15 @@ def _concept_aside_body(title: str, text: str) -> str:
     (escaped) content — one place to change the aside's body.
     """
     body = _paragraphs_html(text)
+    # extra_html: raw author HTML below the Key Idea text, in the same box
+    # (a topic's ``concept_html``), e.g. links to diagrams of the example.
+    if extra_html:
+        body += f'<div style="margin-top:.6rem">{extra_html}</div>'
     return f'<b class="ccp-title">{_e(title)}</b>' + body
 
 
-def _concept_aside(comp_id: str, text: str, *, title: str = "Key Idea") -> str:
+def _concept_aside(comp_id: str, text: str, *, title: str = "Key Idea",
+                   extra_html: str = "") -> str:
     """The Key Idea aside as a standalone block, for INSIDE a tab panel.
 
     Same look as the aside :func:`code_concept_panel` renders (same body, same
@@ -1676,13 +1681,13 @@ def _concept_aside(comp_id: str, text: str, *, title: str = "Key Idea") -> str:
     )
     return (
         f'<aside id="{p}" class="ccp-aside">\n<style>\n{style}\n</style>\n'
-        + _concept_aside_body(title, text)
+        + _concept_aside_body(title, text, extra_html)
         + "</aside>\n"
     )
 
 
 def code_concept_panel(comp_id: str, main_html: str, concept_text: str,
-                       *, title: str = "Key Idea") -> str:
+                       *, title: str = "Key Idea", extra_html: str = "") -> str:
     """Two-column split: the demo on the left, a titled Key Idea aside on the right.
 
     Used on subjects with no memory diagram so the otherwise-empty right column
@@ -1721,7 +1726,7 @@ def code_concept_panel(comp_id: str, main_html: str, concept_text: str,
         f'<div id="{p}" class="ccp">\n<style>\n{style}\n</style>\n'
         f'<div class="ccp-main">{main_html}</div>\n'
         f'<aside class="ccp-aside">'
-        + _concept_aside_body(title, concept_text)
+        + _concept_aside_body(title, concept_text, extra_html)
         + "</aside>\n"
         f"</div>\n"
     )
@@ -2317,6 +2322,7 @@ def _demo_variant_body(pid: str, v: dict, caption: str, diagram: bool = True,
 
 def demo_panel(comp_id: str, entry: dict, diagram: bool = True,
                *, concept: str | None = None, concept_title: str = "Key Idea",
+               concept_html: str = "",
                steps: dict | None = None, diagram_spec: dict | None = None,
                aside_html: dict | None = None,
                gauge: bool = False, console_link: bool = False,
@@ -2336,6 +2342,9 @@ def demo_panel(comp_id: str, entry: dict, diagram: bool = True,
     the otherwise-empty right column as a titled aside (see
     :func:`code_concept_panel`); with a diagram, the concept is left to the
     demo's own ``concept`` block and this argument is ignored.
+
+    ``concept_html`` (raw HTML) is placed inside the Key Idea box, below its
+    text, wherever that box is drawn.
 
     ``aside_html`` (per-variant, keyed by tab label, values RAW/unescaped
     HTML) puts each tab's slot in the right column beside its code, with the
@@ -2384,7 +2393,8 @@ def demo_panel(comp_id: str, entry: dict, diagram: bool = True,
                              perf_chart_panel(f"{cid}-pc", first["perf_chart"]))
             return code_diagram_panel(f"{cid}-cdp", cluster, chart, ratio=(2, 1))
         if concept and not diagram:
-            return code_concept_panel(f"{cid}-ccp", cluster, concept, title=concept_title)
+            return code_concept_panel(f"{cid}-ccp", cluster, concept, title=concept_title,
+                                      extra_html=concept_html)
         return cluster
 
     decode = entry.get("byte_decode", "")
@@ -2416,7 +2426,8 @@ def demo_panel(comp_id: str, entry: dict, diagram: bool = True,
                                       aside_slot=((aside_html or {}).get(label, "")
                                                   if aside_active else ""),
                                       concept_aside=(_concept_aside(f"{pid}-ka", concept,
-                                                                    title=concept_title)
+                                                                    title=concept_title,
+                                                                    extra_html=concept_html)
                                                      if aside_active and concept else ""),
                                       aside_grid=aside_active,
                                       gauge=gauge,
@@ -2430,7 +2441,8 @@ def demo_panel(comp_id: str, entry: dict, diagram: bool = True,
                        (tab_intro or {}).get(extra["label"], "") + extra["html"]))
     tabs = variant_tabs(cid, panels)
     if concept and not diagram and not aside_active:
-        return code_concept_panel(f"{cid}-ccp", tabs, concept, title=concept_title)
+        return code_concept_panel(f"{cid}-ccp", tabs, concept, title=concept_title,
+                                  extra_html=concept_html)
     return tabs
 
 
