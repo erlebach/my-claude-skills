@@ -230,6 +230,8 @@ provenance), the folder shape (`transcripts/`, `harvest/`), the design levers fo
 when capable models refuse to produce the failure your lesson needs, and the page
 grammar (the uniform example skeleton, real tab strips with toggle-to-close,
 prompts beside code via `aside_html`, per-arm diff/reply tabs, page density).
+For a page that replays **one recorded sequence step by step** (a pipeline run, a repair
+loop), use the `replay` block: `reference/AGENTIC.md` §5a.
 
 ---
 

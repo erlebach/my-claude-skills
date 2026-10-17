@@ -17,6 +17,7 @@ honesty discipline that protects the page's credibility.
 3. [The failure-elicitation problem](#3-the-failure-elicitation-problem)
 4. [Two-axis principle: model AND system message](#4-two-axis-principle)
 5. [Page grammar](#5-page-grammar)
+5a. [Replay exhibit: one recorded sequence, step by step](#5a-replay-exhibit-one-recorded-sequence-step-by-step)
 6. [Harvest discipline](#6-harvest-discipline)
 6a. [Two-turn transcripts & system-append disclosure](#6a-two-turn-transcripts--system-append-disclosure)
 7. [Recorded platform gotchas](#7-recorded-platform-gotchas)
@@ -181,6 +182,85 @@ Conventions students see, proven across the series:
   different axis — several vague-prompt arms print `PASS` on every line, so nothing
   about their build is amber. Until that is settled, keep the glyph consistent with
   the tab's badge and put the judgement of the prompt in the label, in words.
+
+## 5a. Replay exhibit: one recorded sequence, step by step
+
+A replay exhibit shows one recorded process whose steps happen in a fixed order, where each
+step's input contains the previous step's output: a pipeline run, a repair loop, a
+multi-turn session. The student walks the steps in order and opens any detail of a step.
+First built for `ag_pipeline` (2026-07-23); made a reusable engine block on 2026-10-17.
+
+**When to use it, and when not.** Use it for a sequence. Do not use it for a contrast
+between arms (a vague prompt against a pinned one, one model against another): there the
+comparison is the point, and the uniform example skeleton (§5) keeps the arms side by side.
+Author decision, 2026-10-17: the existing contrast pages keep their layout.
+
+**Shape.**
+
+- **Outer strip:** one tab per step ("Iteration 1", "Iteration 2", …). Step 1 is
+  preselected, so the sequence is always visible.
+- **Head line:** above each step's tabs, one line that says where the step ended, for
+  example "Iteration 3 of 3 — verdict: `compile: pass, run: pass, tests: FAIL`".
+- **Inner strip:** the step's own tabs, in the order the step happened, toggle-to-close,
+  none preselected. For a pipeline run the order is **Prompt · Reply · Diff · Output · Notes**:
+    - **Prompt:** the prompt sent, verbatim. From step 2 on, highlight the evidence fed back.
+      On a replay page the prompt is a real tab, not a `<details>` panel: it is primary evidence.
+    - **Reply:** the model's complete reply, verbatim, prose and code.
+    - **Diff:** in step 1 the full extracted code with line numbers; later, the change
+      against the previous step, then the full code with line numbers.
+    - **Output:** what the gates said: compiler log, test output, verdict.
+    - **Notes:** the author's commentary, ending with a closed "Where these notes point in
+      the code" fold that cites Diff-tab line numbers.
+- **Key Idea** beside the strip (the block's `concept`), as on every other example.
+- **Below the strip:** the example's figure, the tally of every roll (disclosed
+  selection), a stop panel if the run ended on a stopping rule, and suggested experiments.
+- **No glyphs** on step tabs: a replay shows a tool at work, not a right and a wrong variant.
+
+**YAML.**
+
+```yaml
+blocks:
+  - replay:
+      id: rpl_success_spine      # block id; the Key Idea panel gets the id <id>-ccp
+      strip_id: rps              # short CSS id; step k's inner strip is rps-i<k>-tabs
+      step_label: Iteration      # the word on the outer tabs (this is the default)
+      concept: "..."             # optional Key Idea beside the strip
+      steps:
+        - head: "<p><strong>Iteration 1 of 2</strong> — verdict: <code>compile: FAIL</code></p>"
+          tabs:
+            - {label: Prompt, html: "<pre>...</pre>"}
+            - {label: Reply, html: "<pre>...</pre>"}
+            - {label: Diff, html: "..."}
+            - {label: Output, html: "..."}
+            - {label: Notes, html: "..."}
+```
+
+Engine: `components.replay_strip` and `replay_inner_strip`; builder `render_page._build_replay`;
+catalog entry in `yaml_engine/interface_catalog.py`; unit test `cpp_labs/tests/test_replay_block.py`.
+
+**Generate the YAML; do not copy recorded text by hand.** The steps come from the recorded
+run's files (`prompt_sent.txt`, `reply.md`, `extracted.cpp`, `compile.log`,
+`battery_output.txt`, `verdict.txt`). Write a small `harvest/scripts/gen_page.py` that reads
+the run folder and the author's notes file (`harvest/notes/<example>.notes.yaml`: title,
+intro, `key_idea`, per-step notes, optional `figure`, tally caption, stop panel,
+experiments) and writes `demos/<example>.demo.yaml`. The model is
+`cpp_labs/ag_pipeline/harvest/scripts/gen_page.py`. Never edit the generated YAML:
+`cpp_labs/tests/test_generators_authoritative.py` regenerates each page and fails on any
+difference. Register a new generator there.
+
+**Honesty.** One complete run per example. Never join steps from different runs: step 2's
+Prompt must contain step 1's Output word for word, so a joined run is false on its own tabs.
+Show the tally of every roll beside the selected run.
+
+**Tests to add** (the `ag_pipeline` module test is the model):
+
+- byte-sync: each Prompt and Reply tab equals its recorded file;
+- structure: step 1 checked, every inner "none" radio checked, an open label and a close
+  twin for every tab;
+- a Key Idea beside each strip, and the figure below the right strip;
+- in a browser: copy `harvest/scripts/playwright_toggle_check.py`. Find rail entries by
+  their title, not by `lab-rN` ids: the ids shift when the sidebar changes (the old check
+  failed for this reason, found 2026-10-17).
 
 ## 6. Harvest discipline
 

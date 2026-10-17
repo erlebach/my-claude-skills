@@ -487,7 +487,9 @@ pointing at the same `demos/`).
 A `glossary.yaml` is `title:` + `terms:` list of `{term, def}`.
 
 ### Block vocabulary (in `blocks:`)
-Smart builders: `heading`, `html`, `topic`, `concept`. Component blocks:
+Smart builders: `heading`, `html`, `topic`, `prose_tabs`, `replay`, `concept`.
+`html` and `prose_tabs` take an optional `concept` (a Key Idea beside them); `replay` is the
+replay exhibit (AGENTIC.md §5a). Component blocks:
 `callout_note`, `color_legend`, `memory_diagram`, `hover_link_diagram`,
 `before_after_toggle`, `predict_reveal_quiz`, `compile_status_badge`, `output_console`,
 `byte_grid`, `code_line_link`, `variant_tabs`, `code_diagram_panel`, `stacked_subcases`,
