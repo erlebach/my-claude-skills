@@ -26,6 +26,8 @@ from .code_generator import ControlDef, TopicTemplate, generate_source
 from .compiler_runner import (
     compile_and_run, parse_gauge_all, parse_membytes, parse_perf_chart,
     parse_ptrdata_all, PerfChartError)
+from cpp_labs import compile_cache
+from cpp_labs import project_runner
 from .html_renderer import assemble_page, render_fragment, svg_renderer
 
 
@@ -43,6 +45,18 @@ _MARKER_LINE_RE = re.compile(
     r"^[ \t]*(?:MEMBYTES|PTRDATA|GAUGE):.*(?:\r?\n|$)", re.MULTILINE)
 
 
+# The compiler is invoked on a file in a fresh temp directory, so RunResult.command
+# carries absolute paths no reader can use (and which differ between builds, and
+# between a cached result and a fresh one). Strip them to the basenames, leaving the
+# command a student can retype against their own snippet.cpp.
+_CMD_PATH_RE = re.compile(r"\S*/(snippet(?:\.cpp)?)\b")
+
+
+def _display_cmd(command: str) -> str:
+    """``RunResult.command`` with build-directory paths reduced to basenames."""
+    return _CMD_PATH_RE.sub(r"\1", command or "")
+
+
 def _display_stdout(stdout: str) -> str:
     """Return program stdout with the diagram-feed marker lines removed."""
     return _MARKER_LINE_RE.sub("", stdout)
@@ -54,13 +68,31 @@ def _display_stdout(stdout: str) -> str:
 # from the source that is compiled and shown, leaving neither a marker nor a box.
 _HL_LINE_RE = re.compile(r"/\*\[hl\]\*/(.*?)/\*\[/hl\]\*/", re.S)
 
+# A SECOND marker, for step-gauge lines only: /*[step]*/ … /*[/step]*/. It exists
+# because /*[hl]*/ feeds two consumers with opposite rules — the gauge takes the
+# LAST marked line before each GAUGE: print, while console_line_link makes EVERY
+# marked line a link target and has a literal-less line join the group above it.
+# Marking `a.reset();` for the gauge therefore linked it to the previous step's
+# console line. With [step] the two axes are independent: [step] marks the line
+# that MOVED the count, [hl] marks the cout lines that REPORT it.
+_STEP_LINE_RE = re.compile(r"/\*\[step\]\*/(.*?)/\*\[/step\]\*/", re.S)
+
+# Every marker pair is stripped from the source that is compiled and displayed.
+_MARKERS = ("/*[hl]*/", "/*[/hl]*/", "/*[step]*/", "/*[/step]*/")
+
+
+def _strip_markers(source: str) -> str:
+    """Remove every author marker, leaving the code exactly as written."""
+    for m in _MARKERS:
+        source = source.replace(m, "")
+    return source
+
 
 def _extract_hl_line(source: str) -> tuple[str, str]:
     """Return ``(marked_line, source_without_markers)`` — empty line if unmarked."""
     m = _HL_LINE_RE.search(source)
     line = m.group(1).strip() if m else ""
-    clean = source.replace("/*[hl]*/", "").replace("/*[/hl]*/", "")
-    return line, clean
+    return line, _strip_markers(source)
 
 
 def _extract_gauge_lines(source: str) -> list[str]:
@@ -74,10 +106,14 @@ def _extract_gauge_lines(source: str) -> list[str]:
     so each gauge step can name the exact line that moved the count. The lifted
     text is verbatim from the real code, so it can't drift (same guarantee as
     :func:`_extract_hl_line`)."""
+    # A source using the dedicated [step] marker binds the gauge to THOSE lines
+    # only, so [hl] is free to mark the reporting cout lines for console_line_link.
+    # Sources with no [step] marker keep the original [hl] behaviour unchanged.
+    rx = _STEP_LINE_RE if "/*[step]*/" in source else _HL_LINE_RE
     lines_out: list[str] = []
     pending = ""
     for line in source.splitlines():
-        m = _HL_LINE_RE.search(line)
+        m = rx.search(line)
         if m:
             pending = m.group(1).strip()
         if '"GAUGE:' in line:          # the cout that emits a GAUGE: marker
@@ -116,7 +152,7 @@ def _extract_link_lines(source: str) -> list[tuple[str, str, str]]:
         m = _HL_LINE_RE.search(line)
         if not m:
             continue
-        clean = line.replace("/*[hl]*/", "").replace("/*[/hl]*/", "")
+        clean = _strip_markers(line)
         lits = _LINK_PREFIX_RE.findall(m.group(1))
         prefix = lits[0] if lits else ""
         # A suffix exists only when a value sits BETWEEN two literals (>= 2
@@ -211,6 +247,32 @@ def _bind_console_link(
         link_console.append((ln, key))
     return link_source, link_console
 
+
+
+def _key_gauge_lines(link_source, gauge_steps):
+    """Give every gauge step and its source line a shared ``lg<i>`` link key.
+
+    The gauge sits in the right column of the same ``data-cll-scope`` as the code
+    panel, so a shared key makes hovering step *i* light the line that moved the
+    count — the same affordance the code and console panels already have. Keys
+    start with ``l`` on purpose: the tri-link handler treats an ``l``-key as a
+    free line<->line link, so no JS change is needed. A line that already carries
+    a console key keeps it and gains the gauge key alongside."""
+    if not link_source:
+        return link_source, gauge_steps
+    norm = lambda s: " ".join(s.split())
+    out = list(link_source)
+    for i, step in enumerate(gauge_steps):
+        code = step.get("code")
+        if not code:
+            continue
+        want, key = norm(code), f"lg{i}"
+        for j, (text, k) in enumerate(out):
+            if norm(text) == want:
+                out[j] = (text, f"{k} {key}" if k else key)
+                step["key"] = key
+                break
+    return out, gauge_steps
 
 
 def _gauge_steps_with_code(stdout: str, gauge_lines: list[str]) -> list[dict]:
@@ -364,6 +426,39 @@ def _cartesian(dropdowns: list[ControlDef]) -> list[dict[str, str]]:
 # ---------------------------------------------------------------------------
 
 
+def variant_label(topic: TopicTemplate, control_state: dict[str, str]) -> str:
+    """Return the human-readable tab label for one variant's control state."""
+    # Build a human-readable label from the categorical control values
+    label_parts = []
+    for ctrl in topic.controls:
+        if ctrl.kind == "dropdown":
+            label_parts.append(control_state.get(ctrl.id, ctrl.default))
+    label = " / ".join(str(p) for p in label_parts) if label_parts else ""
+    if "__std__" in control_state:
+        label = f"C++{control_state['__std__']}"
+    if "__opt__" in control_state:
+        label = topic.flag_variants[int(control_state["__opt__"])]["label"]
+    return label
+
+
+_SANITIZER_REPORT = re.compile(r"^(?:==\d+==)?(?:ERROR|SUMMARY): \w*Sanitizer", re.M)
+
+
+def _crashed(result) -> bool:
+    """Did the program die, rather than exit with a code it chose?
+
+    A signal (abort, failed assert, uncaught exception, segfault, and every
+    sanitizer report on darwin) shows as a negative code, or 128+N through a
+    shell. A sanitizer report counts as a crash whatever the code, because on
+    Linux AddressSanitizer exits 1. Anything else nonzero is ``return n`` or
+    ``std::exit(n)``: the program finished and reported failure on purpose.
+    """
+    rc = result.exit_code
+    if rc is None or rc < 0 or rc >= 128:
+        return True
+    return bool(_SANITIZER_REPORT.search(result.stderr or ""))
+
+
 def capture_variant(topic: TopicTemplate, control_state: dict[str, str]) -> dict[str, Any]:
     """Compile and run one variant; return a render-data dict.
 
@@ -376,16 +471,7 @@ def capture_variant(topic: TopicTemplate, control_state: dict[str, str]) -> dict
       failed     — True if compilation failed
       stderr     — compiler stderr (non-empty when failed)
     """
-    # Build a human-readable label from the categorical control values
-    label_parts = []
-    for ctrl in topic.controls:
-        if ctrl.kind == "dropdown":
-            label_parts.append(control_state.get(ctrl.id, ctrl.default))
-    label = " / ".join(str(p) for p in label_parts) if label_parts else ""
-    if "__std__" in control_state:
-        label = f"C++{control_state['__std__']}"
-    if "__opt__" in control_state:
-        label = topic.flag_variants[int(control_state["__opt__"])]["label"]
+    label = variant_label(topic, control_state)
 
     # Multi-case topics: compile one independent sub-case per CaseDef and
     # bundle them under this variant.  The variant itself carries only the
@@ -407,6 +493,8 @@ def _compile_one(
     extra_subs: dict[str, str] | None,
 ) -> dict[str, Any]:
     """Compile+run a single program and return its render-data dict (no label)."""
+    if getattr(topic, "project", None):
+        return _compile_project(topic, control_state)
     source = generate_source(topic, control_state, extra_subs)
     # Bind each GAUGE: print to its marked code line BEFORE the markers are
     # stripped, so a gauge step can name the line that moved the count.
@@ -423,16 +511,40 @@ def _compile_one(
     # than a bare signal; ``-g`` keeps the report's function names readable.
     extra_flags = ["-fsanitize=address", "-g"] if getattr(topic, "sanitize", False) else []
     extra_flags = list(extra_flags) + list(getattr(topic, "extra_compile_flags", []) or [])
+    # Per-tab flags: only the dropdown option named in option_flags gets them.
+    for value in control_state.values():
+        extra_flags += list(getattr(topic, "option_flags", {}).get(value, []))
     # Output-flag tabs: inject this tab's flag set (e.g. -O2) into the compile.
     if "__opt__" in control_state:
         extra_flags += list(topic.flag_variants[int(control_state["__opt__"])]["flags"])
     std = control_state.get("__std__")
     std_kw = {"std": f"c++{std}"} if std else {}
-    result = compile_and_run(source, extra_flags=extra_flags or None, **std_kw)
+    # Reuse the answer g++ already gave for this exact program, so rebuilding an
+    # unchanged page produces the same bytes instead of a fresh set of addresses.
+    # Timing demonstrations are the one exclusion: a frozen measurement is not a
+    # measurement, so a topic with a perf_chart always runs for real.
+    std_key = std_kw.get("std", "c++20")
+    flags = extra_flags or None
+    # -I. resolves against the compiler's working directory, so two topics with
+    # identical flags but different cwd are different builds; the cache key has
+    # to say so.
+    cwd = getattr(topic, "compile_cwd", "") or None
+    cache_flags = (list(flags or []) + [f"__cwd__={cwd}"]) if cwd else flags
+    cacheable = not getattr(topic, "perf_chart", None)
+    result = compile_cache.lookup(source, cache_flags, std_key) if cacheable else None
+    if result is None:
+        result = compile_and_run(source, extra_flags=flags, cwd=cwd, **std_kw)
+        if cacheable:
+            compile_cache.store(source, cache_flags, std_key, result)
     # Bind real stdout lines to their marked cout source line (empty unless the
     # topic marked lines). ``source`` is already marker-free here (stripped above).
     link_source, link_console = _bind_console_link(
         source, _display_stdout(result.stdout), link_lines)
+    # Gauge steps and the lines that moved the count share an ``lg<i>`` key, so a
+    # step in the right column can light its own source line. Computed BEFORE
+    # tri_source below, which is derived from link_source.
+    gauge_steps = _gauge_steps_with_code(result.stdout, gauge_lines)
+    link_source, gauge_steps = _key_gauge_lines(link_source, gauge_steps)
 
     # console_line_link tri-link keys: each line's l<i> key plus a v<N> key per
     # DATA integer (output-prefix stripped, so incidental label integers don't
@@ -459,8 +571,39 @@ def _compile_one(
     tri_source = [(t, _src_keys(k)) for t, k in link_source]
     tri_console = [(t, _console_keys(t, k)) for t, k in link_console]
 
+    # A run that hit the clock has NO diagnostic: compile_and_run returns
+    # stderr="" plus whatever the program printed before it was killed, and the
+    # branch below would bake that stdout into the error panel as though it were
+    # the crash report. The page then looks complete while having silently lost
+    # its exhibit -- this is how stackframes was built without its
+    # AddressSanitizer report on 2026-08-27. Fail the build instead: a page is
+    # never worth writing from a partial run.
+    if result.status == "execution-timeout" or (
+        result.status == "compile-failed"
+        and result.compiler_stderr.strip() == "Compilation timed out."
+    ):
+        raise RuntimeError(
+            f"topic {getattr(topic, 'id', '?')!r}: {result.status} "
+            f"(controls={control_state}). The machine was too busy, or the "
+            f"program does not finish. Nothing was written; rerun the build."
+        )
+
+    # The same fault one step further on: the run finished, but its sanitizer
+    # report stops before the SUMMARY line that closes it. The page would then
+    # show a partial report, which still reads like a whole one -- array_pointer
+    # was published with 2 of its 7 report lines missing on 2026-08-27. Every
+    # test passed, because they assert a report is present, not that it is
+    # complete.
+    if compile_cache.truncated_sanitizer_report(result):
+        raise RuntimeError(
+            f"topic {getattr(topic, 'id', '?')!r}: the AddressSanitizer report "
+            f"stops before its SUMMARY line (controls={control_state}). The run "
+            f"was cut short. Nothing was written; rerun the build."
+        )
+
     if result.status == "compile-failed":
         return {
+            "compile_cmd": _display_cmd(result.command),
             "source": source,
             "ptrdata": None,
             "ptrdata_steps": [],
@@ -479,18 +622,25 @@ def _compile_one(
             "perf_chart": {},
         }
 
-    if result.status in ("execution-error", "execution-timeout"):
+    exit_code = None
+    if result.status == "execution-error" and not _crashed(result):
+        # The program ran to its end and chose a nonzero exit code -- a test
+        # harness reporting a FAIL, say. That is not a crash: show its output
+        # as a normal run and report the code on the badge.
+        exit_code = result.exit_code
+    elif result.status in ("execution-error", "execution-timeout"):
         # Compiled cleanly but the program crashed (segfault, ASan, abort,
-        # non-zero exit) or timed out.  This is a *runtime* failure — surface it
+        # uncaught exception) or timed out.  This is a *runtime* failure — surface it
         # as such, showing the crash diagnostic (stderr) rather than reporting a
         # green success with the discarded report.
         report = result.stderr or result.stdout or "(program crashed with no diagnostic output)"
         ptrdata = result.ptrdata
         return {
+            "compile_cmd": _display_cmd(result.command),
             "source": source,
             "ptrdata": ptrdata,
             "ptrdata_steps": parse_ptrdata_all(result.stdout),
-            "gauge_steps": _gauge_steps_with_code(result.stdout, gauge_lines),
+            "gauge_steps": gauge_steps,
             "svg": svg_renderer(ptrdata),
             "stdout": _display_stdout(result.stdout),
             "membytes": result.memory_bytes or parse_membytes(result.stdout) or "n/a",
@@ -509,23 +659,71 @@ def _compile_one(
     membytes = result.memory_bytes or parse_membytes(result.stdout)
 
     return {
+        "compile_cmd": _display_cmd(result.command),
         "source": source,
         "ptrdata": ptrdata,
         "ptrdata_steps": parse_ptrdata_all(result.stdout),
-        "gauge_steps": _gauge_steps_with_code(result.stdout, gauge_lines),
+        "gauge_steps": gauge_steps,
         "svg": svg_renderer(ptrdata),
         "stdout": _display_stdout(result.stdout),
         "membytes": membytes,
         "failed": False,
         "error_kind": None,
+        "exit_code": exit_code,
         "byte_line": byte_line,
         "link_source": link_source,
         "link_console": link_console,
         "tri_source": tri_source,
         "tri_console": tri_console,
-        "stderr": "",
+        "stderr": result.stderr if exit_code else "",
         "perf_chart": _perf_charts_from_stdout(topic, _display_stdout(result.stdout)),
     }
+
+
+def _compile_project(topic: TopicTemplate, control_state: dict) -> dict[str, Any]:
+    """Build one tab of a multi-file project with make, run it, return render data.
+
+    The tab's files go in ``files`` as ``[(name, text)]``, in the order the topic
+    lists them; ``source`` is the first of them. The verdicts follow the
+    single-file path: a failed make is a compile error, a signal or a sanitizer
+    report is a crash, and any other nonzero exit is a normal run whose code the
+    badge reports.
+    """
+    label = variant_label(topic, control_state)
+    tab = next(t for t in topic.project["tabs"] if t["label"] == label)
+    all_files = project_runner.read_project(topic.project["dir"])
+    result = project_runner.make_and_run(topic.project["dir"], tab["target"])
+    if result.status == "execution-timeout" or (
+        result.status == "compile-failed"
+        and result.compiler_stderr.strip() == "Compilation timed out."
+    ):
+        raise RuntimeError(
+            f"topic {topic.id!r}: {result.status} (tab {label!r}). The machine "
+            f"was too busy, or the program does not finish. Nothing was written; "
+            f"rerun the build.")
+    if compile_cache.truncated_sanitizer_report(result):
+        raise RuntimeError(
+            f"topic {topic.id!r}: the AddressSanitizer report stops before its "
+            f"SUMMARY line (tab {label!r}). Nothing was written; rerun the build.")
+    files = [(name, all_files[name]) for name in tab["files"]]
+    base = {
+        "compile_cmd": result.command, "source": files[0][1], "files": files,
+        "ptrdata": None, "ptrdata_steps": [], "gauge_steps": [],
+        "svg": svg_renderer(None), "membytes": "n/a", "byte_line": "",
+        "link_source": [], "link_console": [], "tri_source": [], "tri_console": [],
+        "perf_chart": {},
+    }
+    if result.status == "compile-failed":
+        return {**base, "stdout": "", "failed": True, "error_kind": "compile",
+                "stderr": result.compiler_stderr}
+    if result.status == "execution-error" and _crashed(result):
+        report = (result.stderr or result.stdout
+                  or "(program crashed with no diagnostic output)")
+        return {**base, "stdout": result.stdout, "failed": True,
+                "error_kind": "runtime", "stderr": report}
+    exit_code = result.exit_code if result.status == "execution-error" else None
+    return {**base, "stdout": result.stdout, "failed": False, "error_kind": None,
+            "exit_code": exit_code, "stderr": result.stderr if exit_code else ""}
 
 
 # ---------------------------------------------------------------------------

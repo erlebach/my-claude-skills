@@ -18,6 +18,7 @@ stdout in a parseable ``MEMBYTES:`` line.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 
@@ -75,16 +76,34 @@ class TopicTemplate:
     # scope when the bare name is not enough, e.g. "arr (the int* parameter of show)".
     byte_label: str = ""
     doc_url: str = ""
+    # Scaffolding lines: substrings identifying source lines that are the page's
+    # instrumentation rather than the lesson (a shadow-stack recorder, a marker
+    # printf). Any source line containing one is rendered dimmed. The code is
+    # still emitted verbatim and stays copy-pasteable -- only its colour changes.
+    scaffold_lines: list[str] = field(default_factory=list)
     cases: list[CaseDef] | None = None
     extra_compile_flags: list[str] = field(default_factory=list)
+    # Directory to run the compiler from. Only needed by a topic whose verbatim
+    # code uses an angle include (<a/b.hpp> does not search the source's own
+    # directory), so the header must be reached with -I. from here. Keeping the
+    # flag relative keeps the build command shown on the page retypeable.
+    compile_cwd: str = ""
     standards: list[int] = field(default_factory=list)
     # Output-flag tabs: each entry is {"label": str, "flags": list[str]}. The
     # engine fans out one tab per entry, compiling the SAME source with that
     # entry's flags (e.g. -O0 vs -O2). Mirrors ``standards``/``__std__``.
     flag_variants: list[dict] = field(default_factory=list)
+    # Per-tab compile flags: {dropdown option label: [flags]}. Only the tab with
+    # that label compiles with them (e.g. one AddressSanitizer tab among plain
+    # ones). Unlike ``sanitize``, which applies to every tab of the topic.
+    option_flags: dict = field(default_factory=dict)
     # Performance chart spec: keyed by chart id; each entry has mode, match,
     # y/x axis specs. Populated and validated by topic_yaml._validate_perf_chart.
     perf_chart: dict = field(default_factory=dict)
+    # Multi-file project: {"dir": str, "tabs": [{"label", "target", "files"}]}.
+    # ``dir`` is relative to cpp_labs/. Each tab is one make target; ``files``
+    # are the files shown in that tab, in order. None for a single-file topic.
+    project: dict | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -154,7 +173,42 @@ def generate_source(
     for _ in range(8):
         previous = result
         for placeholder, value in subs.items():
-            result = result.replace(placeholder, value)
+            result = _substitute(result, placeholder, value)
         if result == previous:
             break
     return result
+
+
+# A placeholder alone on its line, with only whitespace before it. The captured
+# whitespace is the indentation the substituted block has to adopt.
+def _own_line(placeholder: str) -> re.Pattern:
+    return re.compile(rf"^([ \t]*){re.escape(placeholder)}[ \t]*$", re.M)
+
+
+def _substitute(text: str, placeholder: str, value: str) -> str:
+    """Fill one ``<<placeholder>>``, re-indenting a multi-line value to match it.
+
+    A plain ``str.replace`` indents only the value's FIRST line — the template's
+    own leading whitespace sits in front of it, and every later line lands at
+    column zero. On a class member that means a method printed flush against the
+    left margin, inside the class body, which reads as a syntax error the reader
+    then has to talk themselves out of. (The compiler never minded; C++ ignores
+    the whitespace. The reader is the one being misled.)
+
+    So: when the placeholder is alone on its line, every line of the value takes
+    that line's indentation. Blank lines stay empty rather than becoming trailing
+    whitespace. A placeholder used mid-line has no indentation to inherit and is
+    substituted verbatim, as before.
+    """
+    pat = _own_line(placeholder)
+    if not pat.search(text):
+        return text.replace(placeholder, value)
+
+    def _fill(m: re.Match) -> str:
+        pad = m.group(1)
+        return "\n".join(pad + ln if ln.strip() else "" for ln in value.split("\n"))
+
+    # A function replacement is used deliberately: re.sub does not expand escape
+    # sequences in what a function returns, so a value containing "\n" (as C++
+    # string literals here routinely do) survives verbatim.
+    return pat.sub(_fill, text)

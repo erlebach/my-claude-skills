@@ -40,7 +40,7 @@ _TIER: dict[str, str] = {
     "variant_tabs": "generic", "code_diagram_panel": "generic",
     "stacked_subcases": "generic", "progressive_steps": "generic",
     "glossary": "generic", "heading": "generic", "html": "generic",
-    "concept": "generic", "glossary_note": "generic",
+    "concept": "generic", "glossary_note": "generic", "prose_tabs": "generic",
     "compile_status_badge": "code", "code_line_link": "code", "topic": "code",
     "color_legend": "cpp-memory", "memory_diagram": "cpp-memory",
     "hover_link_diagram": "cpp-memory", "byte_grid": "cpp-memory",
@@ -55,18 +55,31 @@ _TIER: dict[str, str] = {
 _BUILDER_INFO: dict[str, tuple[str, str, str]] = {
     "heading": ("(inline <hN>)", "text, level",
                 "A section heading (h2 by default)."),
-    "html": ("(raw passthrough)", "content",
-             "Author-supplied HTML inserted verbatim."),
-    "topic": ("demo_panel", "source, diagram, gauge, console_link, aside_html",
+    "html": ("(raw passthrough)", "content, concept, concept_title",
+             "Author-supplied HTML inserted verbatim; with concept, beside a "
+             "Key Idea aside (code_concept_panel)."),
+    "topic": ("demo_panel", "source, diagram, gauge, console_link, aside_html, tab_label, tab_notes, tab_intro, extra_tabs",
               "A compiled topic: code + real g++ output, with an optional "
               "memory diagram (diagram: false to suppress), an optional "
               "build-derived step_gauge (gauge: true, fed by GAUGE: markers), an "
               "optional bidirectional console↔source hover link "
               "(console_link: true, fed by /*[hl]*/ marked cout lines), and an "
               "optional per-variant right-column HTML slot (aside_html: a map "
-              "keyed by tab label; raw HTML, diagram: false topics only)."),
-    "concept": ("concept_note", "text, label, open",
-                "One example's fold-away Concept note (native <details>)."),
+              "keyed by tab label; raw HTML, diagram: false topics only). "
+              "tab_label names a single-variant topic's tab; tab_notes adds "
+              "raw HTML under a tab's console; tab_intro adds raw HTML at the "
+              "top of a tab (extra tabs too); extra_tabs appends {label, html} "
+              "tabs with no code (e.g. a model reply that wrote none)."),
+    "prose_tabs": ("variant_tabs + code_concept_panel", "panels, concept, concept_title",
+                   "Tabs of author HTML only ({label, html}, no compiled program), "
+                   "beside an optional Key Idea aside."),
+    "replay": ("replay_strip (+ code_concept_panel)", "steps, strip_id, step_label, concept, concept_title",
+               "A replay exhibit: one recorded sequence step by step. An outer strip of "
+               "steps (step 1 preselected), each with a head line and an inner strip of "
+               "toggle tabs ({label, html}, none preselected); optional Key Idea aside."),
+    "concept": ("concept_note", "text, label, open, footnote",
+                "One example's fold-away Concept note (native <details>); "
+                "footnote adds a dim remark below the Key Idea, same box."),
     "glossary_note": ("glossary_note", "terms, label, open",
                       "One example's fold-away glossary chip (a term list, styled "
                       "like the Concept chip; sits inline beside it)."),

@@ -297,14 +297,26 @@ class _Cancelled(Exception):
     """Internal sentinel raised by ``_run_cancellable`` when cancelled."""
 
 
+def _strip_build_dir(text: str, build_dir: str) -> str:
+    """Drop the throwaway build directory, leaving ``snippet.cpp:5:14``.
+
+    Compiler diagnostics and sanitizer reports name the source by its full
+    path, which here is a ``tempfile.mkdtemp`` directory on the machine that
+    built the page. Only the file name and position are useful to a reader.
+    """
+    return text.replace(build_dir + os.sep, "")
+
+
 def _run_cancellable(
     cmd: list[str],
     timeout: float = 5.0,
     cancel_event: threading.Event | None = None,
+    cwd: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run ``cmd`` capturing output as text, with optional cancellation."""
     proc = subprocess.Popen(
         cmd,
+        cwd=cwd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -348,20 +360,32 @@ def _compile(
     cancel_event: threading.Event | None,
     extra_flags: list[str] | None = None,
     std: str = "c++20",
+    cwd: str | None = None,
 ) -> tuple[str, subprocess.CompletedProcess[str] | None, str, str]:
-    """Shared compile step used by :func:`compile_only` and :func:`compile_and_run`."""
+    """Shared compile step used by :func:`compile_only` and :func:`compile_and_run`.
+
+    *cwd* runs the compiler from that directory. A topic needs it when the model
+    code it shows is byte-verbatim and uses an angle include -- ``<a/b.hpp>``
+    does not search the source's own directory, so the header has to be found
+    through ``-I.``, which only means anything if the compiler runs where that
+    directory is. Keeping the flag relative is what lets the build command shown
+    on the page be one a reader can retype.
+    """
     flags = extra_flags or []
     compile_cmd = ["g++", f"-std={std}"] + flags + [src_path, "-o", exe_path]
     compile_cmd_str = " ".join(compile_cmd)
     try:
         compile_proc = _run_cancellable(
-            compile_cmd, timeout=timeout, cancel_event=cancel_event
+            compile_cmd, timeout=timeout, cancel_event=cancel_event, cwd=cwd
         )
     except _Cancelled:
         return (compile_cmd_str, None, "cancelled", "")
     except subprocess.TimeoutExpired:
         return (compile_cmd_str, None, "compile-failed", "Compilation timed out.")
 
+    compile_proc.stderr = _strip_build_dir(
+        compile_proc.stderr, os.path.dirname(src_path)
+    )
     if compile_proc.returncode != 0:
         return (
             compile_cmd_str,
@@ -429,6 +453,7 @@ def compile_and_run(
     cancel_event: threading.Event | None = None,
     extra_flags: list[str] | None = None,
     std: str = "c++20",
+    cwd: str | None = None,
 ) -> RunResult:
     """Compile ``source`` with ``g++ -std=<std>`` and run the resulting binary."""
     tmpdir = tempfile.mkdtemp(prefix="cpp_lab_")
@@ -439,7 +464,7 @@ def compile_and_run(
             f.write(source)
 
         compile_cmd_str, compile_proc, compile_status, compiler_stderr = _compile(
-            src_path, exe_path, timeout, cancel_event, extra_flags, std=std
+            src_path, exe_path, timeout, cancel_event, extra_flags, std=std, cwd=cwd
         )
 
         if compile_status == "cancelled":
@@ -504,6 +529,9 @@ def compile_and_run(
                 command=compile_cmd_str,
                 compiler_stderr=compiler_stderr,
             )
+
+        run_proc.stdout = _strip_build_dir(run_proc.stdout, tmpdir)
+        run_proc.stderr = _strip_build_dir(run_proc.stderr, tmpdir)
 
         ptrdata = parse_ptrdata(run_proc.stdout)
 

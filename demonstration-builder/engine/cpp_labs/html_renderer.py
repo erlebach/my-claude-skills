@@ -80,10 +80,14 @@ _TREE_NODE_H = 44
 _TREE_ROW_H = 84     # vertical pitch between tree depths
 _TREE_COL_W = 112    # horizontal pitch between in-order columns
 _BUCKET_SLOT_W = 54  # the [n] slot box
-_BUCKET_ENTRY_W = 100
+_BUCKET_ENTRY_W = 124
 _BUCKET_BOX_H = 36
 _BUCKET_ROW_H = 50   # vertical pitch between buckets
 _BUCKET_GAP = 22     # horizontal gap (room for the chain connector)
+_HASH_KEY_W = 90     # optional key -> hash -> bucket rows above the bucket array
+_HASH_VAL_W = 204    # wide enough for a 20-digit size_t at 14px
+_HASH_ARROW_W = 84   # room for the "std::hash" label over the arrow
+_HASH_LABEL_SIZE = 12
 
 _SET_BOX_W = 48      # set element box (disconnected — no connectors)
 _SET_BOX_H = 44
@@ -596,7 +600,9 @@ def _svg_tree(spec: "dict | None", p: str) -> str:
 
 def _svg_buckets(spec: "dict | None", p: str) -> str:
     """Render a declarative hash-bucket diagram (unordered_map). `spec` keys:
-    ``buckets`` (ordered; each {slot, entries}) and an optional ``note``. Buckets
+    ``buckets`` (ordered; each {slot, entries}), an optional ``hashes`` list
+    (each {key, hash, bucket}) drawn above the array as key -> std::hash -> hash
+    -> % bucket_count -> [bucket] rows, and an optional ``note``. Buckets
     stack vertically; each bucket's `entries` list lays out horizontally as a
     collision chain joined by short connectors (a bucket IS a list — one entry is
     a singleton, many is a chain). Empty buckets show a dim ∅. Fixed sizes +
@@ -604,12 +610,36 @@ def _svg_buckets(spec: "dict | None", p: str) -> str:
     spec = spec or {}
     buckets = spec.get("buckets", [])
     note = spec.get("note")
+    hashes = spec.get("hashes") or []
     body = ""
+    hash_w = 0
+    if hashes:
+        # key -> std::hash -> hash value -> % bucket_count -> [bucket], one row per key.
+        marker_id = f"{p}-ah"
+        body += _marker_defs(marker_id, _ARROW_COLOR)
+        for i, h in enumerate(hashes):
+            y = _PAD + i * _BUCKET_ROW_H
+            cy = y + _BUCKET_BOX_H // 2
+            x = _PAD
+            for label, width, arrow in (
+                (str(h.get("key", "?")), _HASH_KEY_W, "std::hash"),
+                (str(h.get("hash", "?")), _HASH_VAL_W, f"% {len(buckets)}"),
+                (f"[{h.get('bucket', '?')}]", _BUCKET_SLOT_W, None),
+            ):
+                body += _centered_box(x, y, width, _BUCKET_BOX_H, label, _BOX_STROKE)
+                x += width
+                if arrow:
+                    body += _text(x + 6, y + 4, arrow, _DIM_COLOR, _HASH_LABEL_SIZE)
+                    body += _arrow_v(x + 2, cy, x + _HASH_ARROW_W - 4, cy,
+                                     _ARROW_COLOR, marker_id)
+                    x += _HASH_ARROW_W
+            hash_w = x - _PAD
+    top = _PAD + len(hashes) * _BUCKET_ROW_H + (_PAD if hashes else 0)
     max_chain = 0
     for i, b in enumerate(buckets):
         entries = b.get("entries") or []
         max_chain = max(max_chain, len(entries))
-        y = _PAD + i * _BUCKET_ROW_H
+        y = top + i * _BUCKET_ROW_H
         body += _centered_box(_PAD, y, _BUCKET_SLOT_W, _BUCKET_BOX_H,
                               f"[{b.get('slot', i)}]", _BOX_STROKE)
         if not entries:
@@ -625,8 +655,9 @@ def _svg_buckets(spec: "dict | None", p: str) -> str:
             body += _centered_box(ex, y, _BUCKET_ENTRY_W, _BUCKET_BOX_H,
                                   str(entry), _BOX_STROKE)
             prev_right = ex + _BUCKET_ENTRY_W
-    vb_w = _PAD * 2 + _BUCKET_SLOT_W + max(1, max_chain) * (_BUCKET_GAP + _BUCKET_ENTRY_W)
-    vb_h = _PAD * 2 + max(0, len(buckets) - 1) * _BUCKET_ROW_H + _BUCKET_BOX_H
+    vb_w = _PAD * 2 + max(hash_w, _BUCKET_SLOT_W
+                          + max(1, max_chain) * (_BUCKET_GAP + _BUCKET_ENTRY_W))
+    vb_h = top + _PAD + max(0, len(buckets) - 1) * _BUCKET_ROW_H + _BUCKET_BOX_H
     svg = _wrap_svg(p, "hash-bucket diagram",
                     "A hash table bucket array; each key lands in a bucket by its hash.",
                     body, vb_w=vb_w, vb_h=vb_h, natural=True)
@@ -938,6 +969,17 @@ def _parse_frames(pd: dict) -> "tuple[int, list[dict]]":
     return ptrbytes, frames
 
 
+def _locals_label(name: str) -> str:
+    """Decode a frame's local-variable name for display.
+
+    A frame may hold several locals, but the PTRDATA ``live=`` field is both
+    comma-separated (between frames) and whitespace-delimited (between the
+    line's key=value pairs), so neither ", " nor " " can appear inside a name.
+    A demo joins several with ``+`` -- ``"a+b"`` -- and that is expanded here.
+    """
+    return ", ".join(part for part in name.split("+") if part)
+
+
 def _frames_core(frames: list, p: str, *, solid: "int | None" = None) -> str:
     """Vertical stack of call frames. Outermost (e.g. main) on top at the
     highest address; each deeper call a box below at a lower address; SP marker
@@ -1001,7 +1043,13 @@ def _frames_core(frames: list, p: str, *, solid: "int | None" = None) -> str:
                 f'{title}</text>'
                 f'<text x="{left + 14}" y="{y + 42}" font-size="12" '
                 f'font-family="ui-monospace,monospace" fill="#b00000">'
-                f'&amp;{_e(f["local"])} = {_e(f["addr"])}</text>'
+                # "&b = 0x..." reads wrong once a frame reports two locals, so
+                # name them and point at the lower address instead.
+                + (f'locals {_e(_locals_label(f["local"]))} '
+                   f'from {_e(f["addr"])}'
+                   if "+" in f["local"]
+                   else f'&amp;{_e(f["local"])} = {_e(f["addr"])}')
+                + '</text>'
             )
         y += box_h + gap
     body = "".join(parts)
@@ -1047,7 +1095,11 @@ def _svg_frames_anatomy(pd: dict, p: str) -> str:
             rows.append((f'parameter: {f["pbytes"]}B', param, f["pbytes"], False))
         rows.append(("return address", retaddr, ptrbytes, False))
         rows.append(("saved frame ptr", savedfp, ptrbytes, False))
-        rows.append((f'local: {f["local"]}', base, f["bytes"], True))
+        # A frame may report more than one local; the row is then the whole
+        # group (address = the lowest of them, size = all of them together).
+        _lw = "locals" if "+" in f["local"] else "local"
+        rows.append((f'{_lw}: {_locals_label(f["local"])}', base,
+                     f["bytes"], True))
         fh = hdr_h // 2 + len(rows) * row_h + 6
         stroke = _FRAME_STROKES[i % len(_FRAME_STROKES)]
         parts.append(
@@ -1182,11 +1234,30 @@ _CSS = """
   --border:    #4a4a4a;
   --accent:    #0b5394;
   --accent-fg: #ffffff;
+  /* The second callout tone, for an aside that says a section is OPTIONAL.
+     Everything else on a page is drawn in --accent, so an "Advanced" note
+     in the same blue reads as one more thing to study. #c2410c is 4.87:1 on
+     --panel-bg, so it clears WCAG AA as label text and not only as a border.
+     Two tones, deliberately: a distinction a reader can learn. */
+  --advanced:  #c2410c;
   --code-bg:   #1d2433;
   --code-fg:   #e8edf6;
+  /* Colour of instrumentation lines (.code-scaffold) — the one knob for how far
+     a page's scaffolding recedes. It is a COLOUR, not an opacity: the linked
+     panels put --code-bg on each line, so fading a line faded its background too
+     and the dimmed block came out lighter than the code around it. #868fa1 is
+     4.77:1 on --code-bg, so the lines stay legible (WCAG AA) while clearly
+     receding from the 13.2:1 of live code. See cpp_labs/scaffold.py. */
+  --code-dim:  #868fa1;
   --ok:        #0a6b2e;
   /*SEMANTIC_TOKENS*/
 }
+/* Instrumentation lines inside a code panel: the page's own machinery, not the
+   lesson. One flat grey replaces the syntax colours, so the line reads as "not
+   the point" in the coloured and the Monochrome view alike, while the text stays
+   selectable and copies verbatim. !important beats the highlight theme's own
+   token colours, which are set on descendant spans. */
+.code-scaffold, .code-scaffold * { color: var(--code-dim) !important; }
 * { box-sizing: border-box; }
 body {
   font-size: 16px; line-height: 1.5;

@@ -31,9 +31,13 @@ if [ ! -d "$SRC_PKG" ] || [ ! -f "$SOURCE/build_labs.sh" ]; then
 fi
 
 # The exact bundle file set — must stay in sync with test_bundled_engine_matches_source.
+# compile_cache, project_runner and scaffold are imported by the engine since 2026-08 to
+# 2026-10 (build_html, topic_yaml, components, render_page); without them the bundle
+# cannot import (found 2026-10-17).
 MODULES=(
   __init__.py build_html.py code_generator.py compiler_runner.py
   components.py html_renderer.py topic_yaml.py
+  compile_cache.py project_runner.py scaffold.py
   yaml_engine/__init__.py yaml_engine/render_page.py yaml_engine/interface_catalog.py
 )
 ASSETS=(

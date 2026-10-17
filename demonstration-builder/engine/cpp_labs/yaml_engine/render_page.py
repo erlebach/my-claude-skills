@@ -30,9 +30,12 @@ Entry point: ``python -m cpp_labs.yaml_engine.render_page <page.yaml> [dist]``
 from __future__ import annotations
 
 import html as _html
+
+from cpp_labs import scaffold as _scaffold
 import re
 import shutil
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -68,27 +71,79 @@ def _topic_registry() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _pre(text: str, language: str | None = None) -> str:
-    cls = f' class="language-{language}"' if language else ""
-    # Keyboard accessibility (WCAG 2.1.1). Page CSS may cap this code window's
-    # height and make the <pre> scroll (the .cdp-code > pre height-cap pattern
-    # used by ag_diff/ag_repair/agentic_spec); a scroll container that no
-    # keyboard can reach is a Level A violation. tabindex="0" makes every code
-    # window focusable (so it can be scrolled by keyboard), and role/aria-label
-    # give the focusable region an accessible name.  See
-    # ENGINE_REQUEST_code-window-keyboard-a11y_2026-07-20.
+def _pre(text: str, language: str | None = None,
+         scaffold: "Sequence[str]" = ()) -> str:
+    # Every panel is per-line. The line-number toggle counts the <code>
+    # children with a CSS counter, so a single-<code> panel would number a
+    # whole program 1; the shape has to be the same on every page for the
+    # header chip to mean the same thing on every page.
+    return _pre_scaffolded(text, language, scaffold)
+
+
+def _pre_scaffolded(text: str, language: str | None,
+                    scaffold: "Sequence[str]") -> str:
+    """A code panel whose instrumentation lines are dimmed.
+
+    Lines matching a ``scaffold_lines`` substring are the page's own machinery
+    (a shadow-stack recorder, a marker printf), not the lesson, and reading past
+    them costs the student attention. They are dimmed with the ``.code-scaffold``
+    rule, whose strength is one CSS token (``--code-dim``).
+
+    Two properties are deliberately preserved:
+
+    * **The panel is still copy-pasteable.** Every line is emitted verbatim
+      inside the SAME ``<pre>``, separated by real newlines, so ``white-space:
+      pre`` and the browser's copy of a ``<pre>`` are unchanged -- selecting the
+      panel yields compilable source, dimming and all. This is why the lines are
+      per-line ``<code>`` children of one ``<pre>``, rather than the bare
+      ``<code class="cll-line">`` blocks the linked panels use: those sit outside
+      a ``<pre>`` and had to re-declare white-space to keep their indentation.
+    * **Syntax highlighting still runs.** ``hljs.highlightAll()`` selects
+      ``pre code``, so each line element is highlighted on its own and keeps the
+      class we put on it -- highlight.js adds classes, it does not remove them.
+      One consequence: a construct spanning several lines (a block comment, a raw
+      string) is highlighted per line, so keep those out of scaffolded topics.
+    """
+    lang = f" language-{language}" if language else ""
+    # Drop trailing blank lines. A source block ends with a newline, so
+    # split("\n") hands back one or two empty lines past the closing brace;
+    # they were invisible until the line-number toggle numbered them, which
+    # put a numbered blank line under every program.
+    lines = text.split("\n")
+    while len(lines) > 1 and not lines[-1].strip():
+        lines.pop()
+    out = []
+    for line in _scaffold.flag_lines(lines, scaffold):
+        line, is_dim = line
+        dim = " code-scaffold" if is_dim else ""
+        out.append(f'<code class="{lang.strip()}{dim}">{_html.escape(line)}</code>')
+    # .code-lines tells the highlight-override layer that the <code> children
+    # are LINES, not the usual single code block, so the theme's per-<code>
+    # block styling (padding + its own background) is switched off for them.
     return (
-        f'<pre tabindex="0" role="region" aria-label="Code listing">'
-        f'<code{cls}>{_html.escape(text)}</code></pre>'
+        f'<pre class="code-lines" tabindex="0" role="region" '
+        f'aria-label="Code listing">'
+        + "\n".join(out) + "</pre>"
     )
 
 
-def _bake_program(v: dict[str, Any], language: str | None = None) -> dict[str, Any]:
+def _files_html(comp_id: str, files: "Sequence[tuple[str, str]]",
+                language: str | None) -> str:
+    """One tab per project file, the Makefile included, each a normal code panel."""
+    panels = [(name, _pre(text, "makefile" if name == "Makefile" else language))
+              for name, text in files]
+    return C.variant_tabs(comp_id, panels)
+
+
+def _bake_program(v: dict[str, Any], language: str | None = None,
+                  scaffold: "Sequence[str]" = (), files_id: str = "") -> dict[str, Any]:
     """Render-data for one compiled program (a variant or a sub-case)."""
     mem = v.get("membytes", "")
     return {
+        "compile_cmd": v.get("compile_cmd", ""),
         "source": v.get("source", ""),
-        "code_html": _pre(v.get("source", ""), language),
+        "code_html": (_files_html(files_id, v["files"], language) if v.get("files")
+                      else _pre(v.get("source", ""), language, scaffold)),
         "ptrdata": v.get("ptrdata"),
         "ptrdata_steps": v.get("ptrdata_steps", []),
         "gauge_steps": v.get("gauge_steps", []),
@@ -102,6 +157,7 @@ def _bake_program(v: dict[str, Any], language: str | None = None) -> dict[str, A
         "ok": not v.get("failed", False),
         "failed": v.get("failed", False),
         "error_kind": v.get("error_kind"),
+        "exit_code": v.get("exit_code"),
         "bytes": mem.split() if mem and mem != "n/a" else [],
         "target_val": (v.get("ptrdata") or {}).get("target_val", "?"),
         # the author-marked source line to echo beside the byte grid (or "")
@@ -111,6 +167,7 @@ def _bake_program(v: dict[str, Any], language: str | None = None) -> dict[str, A
 
 def _bake_one(topic: Any, language: str | None = None) -> dict[str, Any]:
     variants = [capture_variant(topic, cs) for cs in expand_variants(topic)]
+    scaffold = tuple(getattr(topic, "scaffold_lines", ()) or ())
     # Cross-variant perf_charts (from: variants / flag_variants) aggregate one
     # bar per variant across all tabs; attach here, once the full list exists.
     _attach_flag_variant_charts(topic, variants)
@@ -133,11 +190,13 @@ def _bake_one(topic: Any, language: str | None = None) -> dict[str, Any]:
             # sub-cases. Preserve them (each keeps its own compile verdict)
             # so the renderer can stack them; don't flatten to one program.
             entry[label] = {
-                "cases": [{**_bake_program(c, language), "label": c.get("label", "")}
+                "cases": [{**_bake_program(c, language, scaffold),
+                           "label": c.get("label", "")}
                           for c in v["cases"]],
             }
         else:
-            entry[label] = _bake_program(v, language)
+            entry[label] = _bake_program(v, language, scaffold,
+                                         files_id=f"{topic.id}-{label}-files")
     return entry
 
 
@@ -176,7 +235,13 @@ def _resolve(value: Any, data: dict) -> Any:
         m = _REF_RE.fullmatch(value.strip())
         if m:  # whole-value ref → substitute the real object (may be dict/list)
             return _lookup(m.group(1), data)
-        return _REF_RE.sub(lambda mo: str(_lookup(mo.group(1), data)), value)
+        # A ${demo:name|text} cross-demo marker is not a data reference. It is
+        # resolved much later, in components._demo_links, once the surrounding
+        # text has been escaped — so pass it through untouched rather than
+        # letting _lookup fail on a name it was never meant to see.
+        return _REF_RE.sub(
+            lambda mo: mo.group(0) if mo.group(1).startswith("demo:")
+            else str(_lookup(mo.group(1), data)), value)
     if isinstance(value, dict):
         return {k: _resolve(v, data) for k, v in value.items()}
     if isinstance(value, list):
@@ -236,7 +301,14 @@ def _build_heading(args: dict, data: dict) -> str:
 
 
 def _build_html(args: dict, data: dict) -> str:
-    return str(args.get("content", ""))
+    """Author HTML inserted verbatim. With ``concept``, the HTML sits in the left
+    column and a Key Idea aside fills the right one, the same layout as
+    ``prose_tabs`` with a concept (used by generated pages such as ag_pipeline)."""
+    content = str(args.get("content", ""))
+    if args.get("concept"):
+        return C.code_concept_panel(f"{args['id']}-ccp", content, args["concept"],
+                                    title=args.get("concept_title", "Key Idea"))
+    return content
 
 
 def _build_topic(args: dict, data: dict) -> str:
@@ -257,6 +329,10 @@ def _build_topic(args: dict, data: dict) -> str:
     label; each value is raw (unescaped) author HTML rendered in the right
     column of that tab, above the Key Idea aside — which then moves inside the
     tabs (ENGINE_REQUEST_prompt-panel). ``diagram: false`` topics only.
+
+    ``tab_label``, ``tab_notes``, ``tab_intro`` and ``extra_tabs`` (optional):
+    name the compiled tab of a single-variant topic, add a note under a tab's
+    console, add a note at the top of a tab, and append tabs of author HTML only (see :func:`components.demo_panel`).
     """
     return C.demo_panel(args["id"], data[args["source"]],
                         diagram=args.get("diagram", True),
@@ -267,7 +343,44 @@ def _build_topic(args: dict, data: dict) -> str:
                         aside_html=args.get("aside_html"),
                         gauge=args.get("gauge", False),
                         console_link=args.get("console_link", False),
-                        link_diagram=args.get("link_diagram", False))
+                        link_diagram=args.get("link_diagram", False),
+                        tab_label=args.get("tab_label"),
+                        tab_notes=args.get("tab_notes"),
+                        tab_intro=args.get("tab_intro"),
+                        extra_tabs=args.get("extra_tabs"))
+
+
+def _build_replay(args: dict, data: dict) -> str:
+    """A replay exhibit: one recorded sequence, step by step (see components.replay_strip).
+
+    ``steps`` is a list of ``{head, tabs: [{label, html}]}``: ``head`` is HTML shown above
+    the step's tabs. ``strip_id`` (default ``id``) is the short CSS id of the strip.
+    ``step_label`` names the outer tabs ("Iteration" by default). With ``concept``, the
+    strip sits in the left column beside a Key Idea, as in ``prose_tabs``.
+    """
+    steps = [(s.get("head", ""), [(t["label"], t["html"]) for t in s["tabs"]])
+             for s in args["steps"]]
+    strip = C.replay_strip(args.get("strip_id", args["id"]), steps,
+                           step_label=args.get("step_label", "Iteration"))
+    if args.get("concept"):
+        return C.code_concept_panel(f"{args['id']}-ccp", strip, args["concept"],
+                                    title=args.get("concept_title", "Key Idea"))
+    return strip
+
+
+def _build_prose_tabs(args: dict, data: dict) -> str:
+    """Tabs of author HTML only, with no compiled program, beside a Key Idea.
+
+    ``panels`` is a list of ``{label, html}``. With ``concept``, the tab strip
+    sits in the left column and the Key Idea aside fills the right one, the
+    same layout as a ``diagram: false`` topic; without it, just the tabs.
+    """
+    panels = [(p["label"], p["html"]) for p in args["panels"]]
+    tabs = C.variant_tabs(args["id"], panels)
+    if args.get("concept"):
+        return C.code_concept_panel(f"{args['id']}-ccp", tabs, args["concept"],
+                                    title=args.get("concept_title", "Key Idea"))
+    return tabs
 
 
 def _build_concept(args: dict, data: dict) -> str:
@@ -278,8 +391,9 @@ def _build_concept(args: dict, data: dict) -> str:
 
     Args:
         args: The concept block's fields, already filled in: ``id`` and ``text``,
-            plus optional ``label`` (the clickable line) and ``open`` (start
-            already open).
+            plus optional ``label`` (the clickable line), ``open`` (start
+            already open) and ``footnote`` (a dim remark below the Key Idea,
+            in the same box).
         data: The page's baked data. Not needed here, because the text is already
             filled in; kept so every builder has the same shape.
 
@@ -288,7 +402,8 @@ def _build_concept(args: dict, data: dict) -> str:
     """
     return C.concept_note(args["id"], args["text"],
                           label=args.get("label", "Key Idea"),
-                          open_=args.get("open", False))
+                          open_=args.get("open", False),
+                          footnote=args.get("footnote", ""))
 
 
 def _build_glossary_note(args: dict, data: dict) -> str:
@@ -306,6 +421,8 @@ _BUILDERS = {
     "heading": _build_heading,
     "html": _build_html,
     "topic": _build_topic,
+    "prose_tabs": _build_prose_tabs,
+    "replay": _build_replay,
     "concept": _build_concept,
     "glossary_note": _build_glossary_note,
 }
@@ -349,6 +466,7 @@ def _glossary_from_source(args: dict, base: Path) -> tuple[str, str]:
         need a label (e.g. the sidebar) reuse *title* as the default label.
     """
     g = load_spec(Path(base) / args["source"])
+    _check_demo_links(g, str(Path(base) / args["source"]), _demo_names())
     terms = [(t["term"], t["def"]) for t in g.get("terms", [])]
     title = g.get("title", "Glossary")
     html = C.glossary(args.get("id", "glossary"), title, terms)
@@ -451,19 +569,63 @@ def _build_sidebar(sidebar: list, base: Path) -> list:
             title, body = _glossary_from_source(a, base)
             label = a.get("label", title)
         elif kind == "concept":
-            label = a.get("label", "Main Takeaway")
-            body = C.concept_panel(a.get("id", "concept"), a["text"], title=label)
+            label = a.get("label", "Main takeaway")
+            # optional `title:` is the heading inside the panel; it defaults to the rail label
+            body = C.concept_panel(a.get("id", "concept"), a["text"], title=a.get("title", label))
         else:
             raise KeyError(f"unknown sidebar entry type: {kind!r}")
         items.append((label, body))
     return items
 
 
-def build_layout(layout_path: "Path | str", dist_dir: Path) -> Path:
+_DEMO_MARKER_RE = re.compile(r"\$\{demo:([A-Za-z0-9_]+)\|")
+
+
+def _demo_names() -> set[str]:
+    """Every demo a ``${demo:...}`` marker may name — one per layout spec."""
+    labs = Path(__file__).parents[1]
+    return {p.stem[:-len(".rail")] for p in labs.glob("*/layouts/*.rail.yaml")}
+
+
+def _check_demo_links(spec: Any, source: str, known: set[str]) -> None:
+    """Raise if *spec* names a demo that has no layout.
+
+    ``components._demo_links`` is deliberately subject-agnostic — it turns a
+    marker into an anchor and has no idea what a demo is. So a typo would
+    otherwise ship as a link to a page that does not exist. This is the one
+    place that knows the layout set, so it is where the check belongs, and it
+    runs before baking so the build fails rather than the reader.
+    """
+    if isinstance(spec, str):
+        for name in _DEMO_MARKER_RE.findall(spec):
+            if name not in known:
+                raise KeyError(
+                    f"{source}: ${{demo:{name}|...}} names no demo — there is no "
+                    f"cpp_labs/*/layouts/{name}.rail.yaml. "
+                    f"Known demos: {', '.join(sorted(known))}")
+    elif isinstance(spec, dict):
+        for v in spec.values():
+            _check_demo_links(v, source, known)
+    elif isinstance(spec, list):
+        for v in spec:
+            _check_demo_links(v, source, known)
+
+
+def build_layout(layout_path: "Path | str", dist_dir: Path,
+                 home_href: str | None = None) -> Path:
     """Bake+compose a layout spec into one standalone page.
 
-    Writes ``<dist>/<layout-stem>/<layout-stem>.html``. Raises before baking if
-    g++ is unavailable.
+    Writes ``<dist>/<name>.html``, where *name* is the layout stem with a
+    trailing ``.rail`` stripped. Flat and unsuffixed, so the built tree has the
+    same shape as the published one (``course_site/static/rail/<name>.html``)
+    and a link between two demos is the same sibling ``href`` in both. Raises
+    before baking if g++ is unavailable.
+
+    *home_href* is passed through to :func:`components.page_shell` to emit a
+    return-to-site link; see that docstring for why it is opt-in. For the course
+    website, whose rail pages sit one level down at ``<root>/rail/<name>.html``,
+    the value is ``"../"`` — relative, so it survives deployment under a path
+    segment where a leading-slash href would resolve to the host root.
     """
     if shutil.which("g++") is None:
         raise RuntimeError(
@@ -472,6 +634,12 @@ def build_layout(layout_path: "Path | str", dist_dir: Path) -> Path:
     layout_path = Path(layout_path)
     base = layout_path.parent
     spec = load_spec(layout_path)
+
+    # Check every cross-demo marker on the layout, its glossaries and its topics
+    # before anything is compiled: a typo should fail the build, not render as a
+    # link to a page that is not there.
+    known = _demo_names()
+    _check_demo_links(spec, str(layout_path), known)
 
     style = spec.get("style", "left_rail")
 
@@ -483,7 +651,12 @@ def build_layout(layout_path: "Path | str", dist_dir: Path) -> Path:
     items = list(sidebar_items)
     for demo_ref in spec.get("demos", []):
         demo_spec = load_spec(base / demo_ref)
+        _check_demo_links(demo_spec, str(base / demo_ref), known)
         data = bake_all(demo_spec.get("bake", {}), demo_spec.get("language"))
+        # A topic's `explanation` reaches the page through the registry rather
+        # than through load_spec, so the baked entry is where its markers are
+        # visible to this check.
+        _check_demo_links(data, str(base / demo_ref) + " (baked topic)", known)
         fragment = render_fragment(demo_spec, data)
         items.append((demo_spec.get("title", "Demo"), fragment))
 
@@ -491,10 +664,12 @@ def build_layout(layout_path: "Path | str", dist_dir: Path) -> Path:
     nav = C.nav_shell("lab", items, style=style, leading=n,
                       selected=(n if n < len(items) else 0))
     body = f"{header_html}\n{nav}" if header_html else nav
-    page = C.page_shell("page", body, title=spec.get("title", "Lab"), highlight=True, tri_link=True)
+    page = C.page_shell("page", body, title=spec.get("title", "Lab"), highlight=True,
+                        tri_link=True, home_href=home_href)
 
     stem = layout_path.stem
-    out = Path(dist_dir) / stem / f"{stem}.html"
+    name = stem[:-len(".rail")] if stem.endswith(".rail") else stem
+    out = Path(dist_dir) / f"{name}.html"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(page, encoding="utf-8")
     return out
@@ -505,14 +680,26 @@ def main() -> None:
         print("ERROR: g++ not found on PATH; these pages bake real compiler output.",
               file=sys.stderr)
         sys.exit(1)
-    if len(sys.argv) < 2:
+    # --home <href> emits a return-to-site link (layout specs only). Kept off by
+    # default so a page built for Canvas stays self-contained.
+    argv = list(sys.argv[1:])
+    home_href = None
+    if "--home" in argv:
+        i = argv.index("--home")
+        if i + 1 >= len(argv):
+            print("ERROR: --home needs an href, e.g. --home ../", file=sys.stderr)
+            sys.exit(2)
+        home_href = argv[i + 1]
+        del argv[i:i + 2]
+    if not argv:
         print("usage: python -m cpp_labs.yaml_engine.render_page "
-              "<page.yaml> [dist_dir]", file=sys.stderr)
+              "<page.yaml> [dist_dir] [--home <href>]", file=sys.stderr)
         sys.exit(2)
-    spec_path = Path(sys.argv[1])
-    dist = Path(sys.argv[2]) if len(sys.argv) > 2 else Path(__file__).parents[2] / "dist_labs"
+    spec_path = Path(argv[0])
+    dist = Path(argv[1]) if len(argv) > 1 else Path(__file__).parents[2] / "dist_labs"
     spec_probe = load_spec(spec_path)
-    out = build_layout(spec_path, dist) if "demos" in spec_probe else build_page(spec_path, dist)
+    out = (build_layout(spec_path, dist, home_href=home_href)
+           if "demos" in spec_probe else build_page(spec_path, dist))
     print(f"Wrote {out}")
 
 

@@ -13,6 +13,7 @@ from pathlib import Path
 import yaml
 
 from cpp_labs.code_generator import CaseDef, ControlDef, TopicTemplate
+from cpp_labs.project_runner import LABS_DIR, SOURCE_RE
 
 _REQUIRED = ("id", "name", "template", "explanation", "group")
 
@@ -77,12 +78,49 @@ def _validate_perf_chart(block: dict, topic_id: str) -> dict:
     return block
 
 
+def _project(block: dict, topic_id: str) -> dict:
+    """Check a ``project:`` block and return it as {"dir", "tabs"}.
+
+    Every tab needs a unique label, a make target, and a list of files that
+    exist in the folder. The folder is relative to cpp_labs/.
+    """
+    folder = LABS_DIR / block["dir"]
+    if not folder.is_dir():
+        raise ValueError(f"topic {topic_id!r}: project folder not found: {block['dir']}")
+    tabs = []
+    for t in block.get("tabs") or []:
+        files = list(t["files"])
+        for name in files:
+            if not (folder / name).is_file() or not SOURCE_RE.match(name):
+                raise ValueError(
+                    f"topic {topic_id!r}: tab {t['label']!r} shows {name!r}, which is "
+                    f"not a source file in {block['dir']}")
+        tabs.append({"label": t["label"], "target": t["target"], "files": files})
+    if not tabs:
+        raise ValueError(f"topic {topic_id!r}: project has no tabs")
+    labels = [t["label"] for t in tabs]
+    if len(set(labels)) != len(labels):
+        raise ValueError(f"topic {topic_id!r}: duplicate project tab labels {labels}")
+    return {"dir": block["dir"], "tabs": tabs}
+
+
 def _topic(d: dict) -> TopicTemplate:
+    project = _project(d["project"], d.get("id", "?")) if "project" in d else None
     for key in _REQUIRED:
+        if key == "template" and project:
+            continue
         if key not in d:
             raise ValueError(f"topic YAML missing required field {key!r}: {d.get('id', '?')}")
+    if project and (d.get("controls") or d.get("standards") or d.get("flag_variants")):
+        raise ValueError(
+            f"topic {d.get('id', '?')!r}: a project topic takes its tabs from "
+            f"project.tabs; it may not also set controls, standards or flag_variants")
     cases = d.get("cases")
     controls = [_control(c) for c in d.get("controls", [])]
+    if project:
+        labels = [t["label"] for t in project["tabs"]]
+        controls = [ControlDef(id="tab", label="Program", kind="dropdown",
+                               options=labels, default=labels[0])]
     standards = list(d.get("standards", []))
     if standards:
         dropdowns = [c.id for c in controls if c.kind == "dropdown"]
@@ -118,10 +156,18 @@ def _topic(d: dict) -> TopicTemplate:
                 f"topic {d.get('id', '?')!r} has duplicate flag_variant labels "
                 f"{labels}; each label becomes one tab and must be unique"
             )
+    option_flags = {k: list(v) for k, v in (d.get("option_flags") or {}).items()}
+    known = {o for c in controls if c.kind == "dropdown" for o in c.options}
+    unknown = sorted(set(option_flags) - known)
+    if unknown:
+        raise ValueError(
+            f"topic {d.get('id', '?')!r} has option_flags for {unknown}, which "
+            f"are not dropdown options; each key must be an option label"
+        )
     return TopicTemplate(
         id=d["id"],
         name=d["name"],
-        template=d["template"],
+        template=d.get("template", ""),
         controls=controls,
         explanation=d["explanation"],
         group=d["group"],
@@ -131,11 +177,15 @@ def _topic(d: dict) -> TopicTemplate:
         byte_decode=d.get("byte_decode", ""),
         byte_label=d.get("byte_label", ""),
         doc_url=d.get("doc_url", ""),
+        scaffold_lines=list(d.get("scaffold_lines", [])),
         cases=[_case(c) for c in cases] if cases else None,
         extra_compile_flags=list(d.get("extra_compile_flags", [])),
+        compile_cwd=d.get("compile_cwd", ""),
         standards=standards,
         flag_variants=flag_variants,
+        option_flags=option_flags,
         perf_chart=perf_chart,
+        project=project,
     )
 
 

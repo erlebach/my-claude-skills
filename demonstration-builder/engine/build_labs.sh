@@ -2,6 +2,9 @@
 #
 # build_labs.sh — regenerate every HTML page in dist_labs/ from its YAML spec.
 #
+# Each spec is written flat as dist_labs/<name>.html (a layout's trailing .rail is
+# stripped), matching the published layout under course_site/static/rail/.
+#
 # Auto-discovers all buildable specs under cpp_labs/ (no list to maintain):
 #   - cpp_labs/*/layouts/*.yaml   (multi-demo layout pages: rail / tabs / page)
 #   - cpp_labs/*/*.page.yaml      (older standalone single-subject pages)
@@ -12,6 +15,11 @@
 #   ./build_labs.sh <filter>     # only specs whose path contains <filter>
 #                                #   e.g. ./build_labs.sh class_structure
 #   OUT=other_dir ./build_labs.sh   # write into a different output dir
+#   HOME_HREF= ./build_labs.sh      # omit the "← Course" link (self-contained, for Canvas)
+#
+# Pages are built SITE-READY: every page carries the "← Course" link back into
+# the site, so dist_labs/ can be copied to course_site/static/rail/ as-is. That
+# copy is what PUBLISH.sh does. Set HOME_HREF= (empty) for a standalone page.
 #
 # Exits non-zero if any page fails to build.
 
@@ -19,6 +27,7 @@ set -u
 cd "$(dirname "$0")"                       # always run from the repo root
 
 OUT="${OUT:-dist_labs}"
+HOME_HREF="${HOME_HREF-../}"     # unset -> ../ ; set-but-empty -> no link
 FILTER="${1:-}"
 
 shopt -s nullglob
@@ -33,8 +42,9 @@ for spec in "${specs[@]}"; do
         continue
     fi
     # print the exact command executed, so it can be copied and rerun by hand
-    echo "  \$ python -m cpp_labs.yaml_engine.render_page $spec $OUT"
-    if python -m cpp_labs.yaml_engine.render_page "$spec" "$OUT" >/dev/null 2>/tmp/build_labs_err; then
+    echo "  \$ python -m cpp_labs.yaml_engine.render_page $spec $OUT${HOME_HREF:+ --home $HOME_HREF}"
+    if python -m cpp_labs.yaml_engine.render_page "$spec" "$OUT" \
+           ${HOME_HREF:+--home "$HOME_HREF"} >/dev/null 2>/tmp/build_labs_err; then
         echo "    ok"
         built=$((built + 1))
     else

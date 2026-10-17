@@ -27,9 +27,11 @@ hex, so chrome and SVG share one contrast-vetted palette.
 from __future__ import annotations
 
 import html as _html
+import re
 from pathlib import Path
 from typing import Any, Sequence
 
+from .scaffold import flag_lines as _scaffold_flags
 from .html_renderer import (
     _CSS,
     SEMANTIC_PALETTE,
@@ -52,7 +54,18 @@ _HLJS_CSS = (_VENDOR / "atom-one-dark.min.css").read_text(encoding="utf-8")
 # WCAG AA fix (applied in our layer, not the vendored theme, so a re-fetch keeps it):
 # atom-one-dark's comment #5c6370 is only 2.32:1 on its #282c34 bg. #9199a8 is 4.88:1
 # and stays muted (dimmer than the #abb2bf code text). Inlined AFTER the theme so it wins.
-_HLJS_OVERRIDE_CSS = ".hljs-comment,.hljs-quote{color:#9199a8}"
+_HLJS_OVERRIDE_CSS = (
+    ".hljs-comment,.hljs-quote{color:#9199a8}"
+    # A scaffolded panel (render_page._pre_scaffolded) is ONE <pre> holding one
+    # <code> per line, so that dimming a line cannot cost copy fidelity. But the
+    # vendored theme styles every highlighted <code> as a block with its own
+    # padding and background — written for the usual one-<code>-per-<pre> case —
+    # which turned each line into a separate boxed card with a gap under it.
+    # Inside .code-lines the line elements are put back to plain inline text; the
+    # <pre> keeps the single background and padding it already had.
+    "\npre.code-lines > code.hljs{display:inline;padding:0;background:none;"
+    "overflow-x:visible;border-radius:0}"
+)
 
 # Zero-JS "Monochrome" toggle for the highlighted code. A visually-hidden
 # checkbox (placed just before <main>) drives a header-row label chip and, when
@@ -73,6 +86,58 @@ _MONO_TOGGLE_CSS = (
     ".mono-cb:checked ~ header .mono-toggle{background:var(--accent);color:#fff}\n"
     ".mono-cb:checked ~ main .hljs span{color:inherit !important}\n"
 )
+
+# Zero-JS "Line numbers" toggle, on every page that shows code. Same shape as
+# the Monochrome chip above: a visually-hidden checkbox before <main> drives a
+# header-row label and, when checked, numbers every code panel.
+#
+# The number is a CSS counter in ::before, never text in the DOM. So the code
+# panel itself is untouched: a copy of it still yields compilable source, and
+# the count cannot drift out of step with the lines the way a separate gutter
+# column would.
+#
+# Wrapping is why the number is pulled into the <pre>'s own left padding with a
+# negative margin instead of being laid out as a column. Panels soft-wrap by
+# design (`white-space: pre-wrap` in _CSS), so a long line takes two visual
+# rows; the padding moves the text column right and the number is the only
+# thing living in the padding, so a wrapped continuation lands under the code,
+# not under the number. The arithmetic has to stay consistent: the number box
+# starts at 3.6 - 2.9 = 0.7rem (the panel's own left padding) and ends
+# 0.7 + 1.9 + 1.0 = 3.6rem, which is the text column.
+#
+# The count is per <pre>, so each variant panel starts again at 1 -- which is
+# what the sanitizer report cites, since every tab compiles as snippet.cpp.
+_LINENO_CSS = (
+    ".ln-cb{position:absolute;width:1px;height:1px;overflow:hidden;"
+    "clip:rect(0 0 0 0);white-space:nowrap}\n"
+    ".ln-toggle{display:inline-flex;align-items:center;min-height:40px;"
+    "padding:.2rem .8rem;border:1px solid var(--accent);border-radius:8px;"
+    "background:var(--panel-bg);color:var(--accent);font:600 16px system-ui;"
+    "cursor:pointer;white-space:nowrap}\n"
+    ".ln-cb:focus-visible ~ header .ln-toggle{outline:2px solid var(--accent);"
+    "outline-offset:2px}\n"
+    ".ln-cb:checked ~ header .ln-toggle{background:var(--accent);color:#fff}\n"
+    ".ln-cb:checked ~ main pre.code-lines{padding-left:3.6rem;counter-reset:ln}\n"
+    ".ln-cb:checked ~ main pre.code-lines > code{counter-increment:ln}\n"
+    ".ln-cb:checked ~ main pre.code-lines > code::before{content:counter(ln);"
+    "display:inline-block;width:1.9rem;margin-left:-2.9rem;margin-right:1rem;"
+    "text-align:right;color:var(--code-dim);-webkit-user-select:none;"
+    "user-select:none}\n"
+    # A console_line_link panel holds its source as .cll-line blocks outside a
+    # <pre>, so the pre.code-lines rules above cannot reach it -- and a toggle
+    # that numbered eight panels out of nine would read as broken. Same
+    # arithmetic; !important because those rules are emitted per instance under
+    # an id selector (the idiom .code-scaffold and the Monochrome toggle use).
+    # .cll-out is console output and is left alone.
+    ".ln-cb:checked ~ main .cll-src{counter-reset:ln}\n"
+    ".ln-cb:checked ~ main .cll-src .cll-line{counter-increment:ln;"
+    "padding-left:3.6rem !important}\n"
+    ".ln-cb:checked ~ main .cll-src .cll-line::before{content:counter(ln);"
+    "display:inline-block;width:1.9rem;margin-left:-2.9rem;margin-right:1rem;"
+    "text-align:right;color:var(--code-dim);-webkit-user-select:none;"
+    "user-select:none}\n"
+)
+
 
 # Tri-link (code<->console<->diagram): highlight every element sharing a key
 # with the hovered/focused one, scoped to one demo variant. Pure enhancement —
@@ -218,6 +283,84 @@ def _e(s: Any) -> str:
     return _html.escape(str(s))
 
 
+# A cross-demo link, written in prose by demo NAME rather than by path:
+#   ${demo:class_structure|class structure demonstration}
+# Every character the marker uses is one html.escape leaves alone, so it survives
+# escaping intact and the substitution runs AFTER _e — which is what lets the
+# anchor be emitted raw while the link text stays escaped.
+# The href is a bare sibling, correct in both the built tree (dist_labs/<name>.html)
+# and the published one (course_site/static/rail/<name>.html). Making those two the
+# same shape is what this construct is built on.
+_DEMO_LINK_RE = re.compile(r"\$\{demo:([A-Za-z0-9_]+)\|([^}]*)\}")
+
+
+def _demo_links(escaped: str) -> str:
+    """Turn ``${demo:name|text}`` markers in already-escaped HTML into links."""
+    return _DEMO_LINK_RE.sub(
+        lambda m: f'<a href="{m.group(1)}.html">{m.group(2)}</a>', escaped)
+
+
+# An external link, written in prose as `[text](https://…)`.
+# Author's ruling, 2026-09-05: *"Please allow external links in Key Ideas and
+# Vocabulary. External links will work regardless of where the website is
+# located."* That is the point — the 2026-08-28 ban existed because a link
+# BETWEEN pages of this corpus is fragile under a different deployment layout,
+# and an outbound https URL is not. Cross-page references still use
+# `${demo:name|text}`; this marker is for sources outside the corpus.
+#
+# Like the other two markers this runs AFTER escaping, so the URL arrives with
+# `&` already written `&amp;` — which is what an href attribute wants — and the
+# link text an author wrote stays escaped. https only: a rail page is served
+# from `dist_labs/`, from the course site and from Canvas, and an http link is
+# blocked as mixed content in all three, so `[text](http://…)` deliberately does
+# not match and shows up as literal text (and `test_take_it_further.py` fails
+# the build on one). A C++ lambda `[](…)` and `operator new[](…)` are the shapes
+# that could collide; requiring `(https://` immediately after the `]` is what
+# keeps them out.
+_PROSE_LINK_RE = re.compile(r"\[([^\]\n]+)\]\((https://[^\s()<>]+)\)")
+
+
+def _prose_links(escaped: str) -> str:
+    """Turn ``[text](https://…)`` in already-escaped prose into an anchor."""
+    return _PROSE_LINK_RE.sub(
+        lambda m: f'<a href="{m.group(2)}" target="_blank" rel="noopener">'
+                  f'{m.group(1)}</a>',
+        escaped)
+
+
+# `**bold**` in prose. The pattern needs a non-space just inside each delimiter
+# and allows no `*` between them, so a C++ double pointer written in prose
+# ("raw new[]/double**", "char** argv") is never paired into emphasis.
+_EMPH_RE = re.compile(r"\*\*(?=\S)([^*\n]+?)(?<=\S)\*\*")
+
+# `*italic*` in prose, after bold. Neither delimiter may touch a letter, digit,
+# `_` or another `*` on its outer side, or a space on its inner side, and the
+# span holds no `*`, `<` or `>`. So `*p and *q`, `a * b`, `x*y*z` and `char*` in
+# a code span are never paired, and an italic can never reach across a <code>.
+_ITAL_RE = re.compile(r"(?<![\w*])\*(?=[^\s*])([^*\n<>]+?)(?<=[^\s*])\*(?![\w*])")
+
+
+def _emphasis(escaped: str) -> str:
+    """Turn ``**text**`` into ``<strong>`` and ``*text*`` into ``<em>`` in
+    already-escaped prose.
+
+    Runs after escaping, like :func:`_demo_links`, so an authored angle bracket
+    stays escaped and only this one marker produces markup. Prose only — code
+    is rendered down a different path and never passes through here.
+    """
+    return _ITAL_RE.sub(r"<em>\1</em>", _EMPH_RE.sub(r"<strong>\1</strong>", escaped))
+
+
+# `code` in prose. Runs after escaping, so the span's text is already safe;
+# nowrap keeps a short token like `if constexpr` from breaking across lines.
+_CODE_RE = re.compile(r"`([^`\n]+)`")
+
+
+def _inline_code(escaped: str) -> str:
+    """Turn ```code``` in already-escaped prose into ``<code>``."""
+    return _CODE_RE.sub(r'<code style="white-space:nowrap">\1</code>', escaped)
+
+
 # ---------------------------------------------------------------------------
 # 3. Chrome components
 # ---------------------------------------------------------------------------
@@ -281,6 +424,9 @@ details.kbd-help[open] > summary { background: var(--accent); color: #fff; }
    is wider than the panel it scrolls horizontally rather than shrinking. */
 .dia-scroll { overflow-x: auto; max-width: 100%; }
 /* Box-chain caption: wraps below the diagram so a long note never widens it. */
+.build-cmd { font: 12.5px/1.5 ui-monospace, "SF Mono", Menlo, monospace;
+  color: #5a6b8c; margin: .7rem 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.build-cmd::before { content: "$ "; -webkit-user-select: none; user-select: none; }
 .dia-note { font: 13px/1.5 system-ui; color: #5a6b8c; margin: .45rem 0 0;
   max-width: 100%; }
 .byte-grid { border-collapse: collapse; }
@@ -335,12 +481,28 @@ _MORE_CUE_HTML = (
 
 
 def page_shell(comp_id: str, body_html: str, *, title: str = "Demo",
-               highlight: bool = False, tri_link: bool = False) -> str:
+               highlight: bool = False, tri_link: bool = False,
+               home_href: str | None = None,
+               home_label: str = "Course") -> str:
     """Wrap *body_html* in a complete, self-contained WCAG AA document.
 
     Declares ``lang``, exposes a skip link targeting the ``#main`` landmark,
     and inlines all CSS (theme + component styles).  No external/network
     reference is emitted, so the page pastes directly into Canvas.
+
+    *home_href* is opt-in for a reason.  A rail page has no site chrome, so a
+    reader who arrives from a bookmark, a pasted URL or an LMS link has no route
+    back into the course — Back only helps someone who clicked in.  Passing a
+    href emits one return link above the title.  It stays OFF by default because
+    a relative href would resolve against Canvas's own parent once the page is
+    pasted there, silently breaking the portability promised above; the caller
+    that knows where the page will be served is the one that can supply it.
+
+    The link renders inside ``<header>``, grouped with the ``<h1>`` in a
+    ``.hdr-left`` div.  The header is a flex row with
+    ``justify-content: space-between``, so the grouping is what keeps the row at
+    two children and the title on the left; it also means both lines inherit the
+    header's existing padding instead of needing one of their own.
 
     When *highlight* is true, the vendored highlight.js library and theme are
     inlined and run on load (``<pre><code class="language-XXX">`` blocks get
@@ -349,6 +511,17 @@ def page_shell(comp_id: str, body_html: str, *, title: str = "Demo",
     """
     t = _e(title)
     hl_style = (f"<style>\n{_HLJS_CSS}\n{_HLJS_OVERRIDE_CSS}\n{_MONO_TOGGLE_CSS}\n</style>\n"
+                if highlight else "")
+    # Rides with *highlight*, like the Monochrome chip beside it: every page
+    # that shows code gets the same two chips in the same place.
+    ln_style = f"<style>\n{_LINENO_CSS}</style>\n" if highlight else ""
+    ln_cb = ('<input type="checkbox" class="ln-cb" id="ln-code" '
+             'aria-label="Number the lines of each code panel">\n'
+             if highlight else "")
+    ln_label = ('<label for="ln-code" class="ln-toggle" '
+                'title="Number the lines of each code panel, to match the '
+                'file:line a compiler or sanitizer report cites">Line '
+                'numbers</label>\n'
                 if highlight else "")
     # highlightAll() colours the <pre><code class="language-*"> panels. The
     # console_line_link source rows are standalone <code class="cll-line
@@ -370,6 +543,30 @@ def page_shell(comp_id: str, body_html: str, *, title: str = "Demo",
     mono_label = ('<label for="mono-code" class="mono-toggle" '
                   'title="Show code in a single colour (accessible view)">Monochrome</label>\n'
                   if highlight else "")
+    # Both the markup and its rule are conditional, so a page built without
+    # home_href is byte-for-byte what it was before this parameter existed.
+    # The arrow is decoration: aria-hidden keeps the accessible name to the
+    # label alone, so it is announced as "Course", not "left arrow Course".
+    # The link and the <h1> go in ONE div so the flex header row keeps exactly
+    # two children (this group, and .hdr-tools) and the title stays left. The
+    # group owns the stacking, and both lines inherit the header's own padding —
+    # no second padding rule to keep in step with it.
+    if home_href:
+        home_open = ('<div class="hdr-left">\n'
+                     f'<nav class="site-return"><a href="{_e(home_href)}">'
+                     f'<span aria-hidden="true">&#8592;</span> {_e(home_label)}</a></nav>\n')
+        home_close = "</div>\n"
+        home_style = ("<style>\n"
+                      ".hdr-left{display:flex;flex-direction:column;"
+                      "align-items:flex-start;gap:.1rem;min-width:0}\n"
+                      ".site-return a{font-size:.8rem;text-decoration:none;"
+                      "border-bottom:1px solid currentColor}\n"
+                      ".site-return a:hover{border-bottom-width:2px}\n"
+                      "</style>\n")
+    else:
+        home_open = ""
+        home_close = ""
+        home_style = ""
     return (
         "<!DOCTYPE html>\n"
         '<html lang="en">\n'
@@ -379,13 +576,15 @@ def page_shell(comp_id: str, body_html: str, *, title: str = "Demo",
         f"<title>{t}</title>\n"
         f"<style>\n{_CSS}\n{COMPONENT_CSS}\n</style>\n"
         f"{hl_style}"
+        f"{ln_style}"
         f"{cll_style}"
+        f"{home_style}"
         "</head>\n"
         "<body>\n"
         '<a class="skip" href="#main">Skip to content</a>\n'
-        f"{mono_cb}"
-        f"<header>\n<h1>{t}</h1>\n"
-        f'<div class="hdr-tools">{_KBD_HELP_HTML}{mono_label}</div>\n'
+        f"{mono_cb}{ln_cb}"
+        f"<header>\n{home_open}<h1>{t}</h1>\n{home_close}"
+        f'<div class="hdr-tools">{_KBD_HELP_HTML}{mono_label}{ln_label}</div>\n'
         "</header>\n"
         '<main id="main">\n'
         f'<div class="demo-wrap">\n{body_html}\n</div>\n'
@@ -412,13 +611,31 @@ def color_legend(comp_id: str) -> str:
     )
 
 
-def callout_note(comp_id: str, text: str, *, label: str = "Note") -> str:
-    """A pedagogical aside distinguished by a text label and a border."""
+_CALLOUT_TONES = {"note": "--accent", "advanced": "--advanced"}
+
+
+def callout_note(comp_id: str, text: str, *, label: str = "Note",
+                 tone: str = "note") -> str:
+    """A pedagogical aside distinguished by a text label and a border.
+
+    ``tone="advanced"`` draws it in orange rather than the page accent, for the
+    one aside that tells the reader a section is optional. The default tone is
+    byte-identical to what it has always been, so adding this changed no
+    existing page. Two tones only, and an unknown one raises: a typo that fell
+    back to the default would be invisible in the built page.
+    """
     p = _safe(comp_id)
+    if tone not in _CALLOUT_TONES:
+        raise ValueError(
+            f"unknown callout tone {tone!r}; expected one of "
+            f"{', '.join(sorted(_CALLOUT_TONES))}"
+        )
+    token = _CALLOUT_TONES[tone]
+    label_style = "" if tone == "note" else f' style="color:var({token})"'
     return (
         f'<aside class="callout" id="{p}" '
-        f'style="border:2px solid var(--accent);border-left-width:6px">\n'
-        f'<span class="callout-label">{_e(label)}:</span> {_e(text)}\n'
+        f'style="border:2px solid var({token});border-left-width:6px">\n'
+        f'<span class="callout-label"{label_style}>{_e(label)}:</span> {_e(text)}\n'
         f"</aside>\n"
     )
 
@@ -464,13 +681,13 @@ def glossary(comp_id: str, title: str, terms: Sequence[tuple[str, str]]) -> str:
     """
     rows = ""
     for term, definition in terms:
-        rows += f"<dt>{_e(term)}</dt><dd>{_e(definition)}</dd>\n"
+        rows += f"<dt>{_e(term)}</dt><dd>{_prose_links(_demo_links(_e(definition)))}</dd>\n"
     return _prose_box(comp_id, f'<dl style="margin:0">\n{rows}</dl>',
                       title=title, css_class="glossary")
 
 
 def concept_note(comp_id: str, text: str, *, label: str = "Key Idea",
-                 open_: bool = False) -> str:
+                 open_: bool = False, footnote: str = "") -> str:
     """Show one example's Key Idea as a fold-away note.
 
     The note starts folded, showing just a "Key Idea" toggle styled as a
@@ -486,12 +703,31 @@ def concept_note(comp_id: str, text: str, *, label: str = "Key Idea",
         text: The note's wording, shown once the reader opens it.
         label: The wording of the clickable line; defaults to "Key Idea".
         open_: Start already open instead of folded. Defaults to folded.
+        footnote: Optional aside shown below the Key Idea, inside the same box,
+            under a hairline rule and in smaller dim text. Use it for a remark
+            about the page's own machinery — why an instrumentation line is in
+            the code, say — which belongs beside the idea but is not the idea.
+            Empty (the default) renders nothing at all.
 
     Returns:
         The fold-away note as a piece of HTML.
     """
     p = _safe(comp_id)
-    body = _prose_box(f"{p}-box", f'<p style="margin:0">{_e(text)}</p>', css_class="concept")
+    # One <p> per blank-line-separated paragraph, same as the sidebar panel and
+    # the in-tab Key Idea aside — a blank line in the source must survive as a
+    # visible break here too, or a multi-paragraph note renders as one slab.
+    inner = _paragraphs_html(text)
+    if footnote:
+        # Same box as the Key Idea (the author's ruling: the "why" sits with the
+        # idea, not in a separate panel), but visually subordinate to it: a
+        # hairline rule, smaller type, and --fg-dim (7.5:1 on --bg).
+        inner += (
+            f'\n<p id="{p}-fn" class="concept-footnote" '
+            f'style="margin:.5rem 0 0;padding-top:.45rem;'
+            f'border-top:1px solid var(--border);'
+            f'font-size:.88em;color:var(--fg-dim)">{_e(footnote)}</p>'
+        )
+    body = _prose_box(f"{p}-box", inner, css_class="concept")
     op = " open" if open_ else ""
     return (
         f'<details id="{p}" class="concept"{op} style="margin:.4rem 0">\n'
@@ -512,7 +748,7 @@ def glossary_note(comp_id: str, terms, *, label: str = "Memory glossary",
     it can sit on one row beside the Concept chip. ``terms`` is a sequence of
     ``(term, definition)`` pairs."""
     p = _safe(comp_id)
-    rows = "".join(f"<dt>{_e(t)}</dt><dd>{_e(d)}</dd>\n" for t, d in terms)
+    rows = "".join(f"<dt>{_e(t)}</dt><dd>{_prose_links(_demo_links(_e(d)))}</dd>\n" for t, d in terms)
     body = _prose_box(f"{p}-box", f'<dl style="margin:0">\n{rows}</dl>',
                       css_class="concept")
     op = " open" if open_ else ""
@@ -542,7 +778,7 @@ def concept_panel(comp_id: str, text: str, *, title: str = "Concept") -> str:
     Returns:
         The panel as a piece of HTML.
     """
-    return _prose_box(comp_id, f'<p style="margin:0">{_e(text)}</p>',
+    return _prose_box(comp_id, _paragraphs_html(text),
                       title=title, css_class="concept")
 
 
@@ -687,16 +923,21 @@ def compile_status_badge(comp_id: str, ok: bool, *, label: str | None = None,
     """Build/run verdict shown by text + icon + border in addition to colour.
 
     ``kind`` distinguishes the two ways a program can fail so they never look
-    alike: ``"compile"`` (red ``✗ Compile failed``) versus ``"runtime"`` (amber
-    ``⚠ Runtime error`` — the program compiled but crashed). Ignored when *ok*.
+    alike: ``"compile"`` (red ``❌ Compile failed``) versus ``"runtime"`` (amber
+    ``💥 Runtime error`` — the program compiled but crashed). Ignored when *ok*.
+    A program that exits normally with a nonzero code is *ok* here: it shows
+    ``✓ Compiled · exit code N`` (see ``build_html._crashed``).
+    The icons match the tab-label glyphs: ✗ for a build the compiler rejects,
+    💥 for a crash. ⚠ is reserved for the third case — a tab that compiles, runs,
+    and is still wrong — so it never appears as a badge.
     """
     p = _safe(comp_id)
     if ok:
         icon, txt, color = "✓", label or "Compiled", "var(--c-val)"
     elif kind == "runtime":
-        icon, txt, color = "⚠", label or "Runtime error", "var(--c-const)"
+        icon, txt, color = "💥", label or "Runtime error", "var(--c-const)"
     else:
-        icon, txt, color = "✗", label or "Compile failed", "var(--c-err)"
+        icon, txt, color = "❌", label or "Compile failed", "var(--c-err)"
     return (
         f'<span class="badge" id="{p}" '
         f'style="border:2px solid {color};color:{color}">'
@@ -866,6 +1107,9 @@ def code_line_link(
     style_lines = [
         f"#{p} .cll-line {{ display:block; margin:0; padding:.1rem .7rem;"
         " font:14px/1.6 ui-monospace,monospace;"
+        # Each source line is a <code> (not a <pre>), so the default
+        # white-space:normal would collapse its leading indentation away.
+        " white-space:pre-wrap;"
         " background:var(--code-bg); color:var(--code-fg); }",
         f"#{p} .cll-line:first-of-type {{ border-radius:8px 8px 0 0; padding-top:.5rem; }}",
         f"#{p} .cll-line:last-of-type {{ border-radius:0 0 8px 8px; padding-bottom:.5rem; }}",
@@ -882,14 +1126,19 @@ def code_line_link(
     style = "\n".join(style_lines)
 
     code_lines = ""
+    # Instrumentation lines recede here exactly as they do in the plain panel;
+    # one rule, in cpp_labs/scaffold.py, so the two render paths cannot drift.
+    dims = dict((c, d) for (c, d) in _scaffold_flags([c for c, _k in lines]))
     for code, k in lines:
+        sc = " code-scaffold" if dims.get(code) else ""
         if k:
             sk = _safe(k)
             code_lines += (
-                f'<code class="cll-line cll-link ln-{sk}" tabindex="0">{_e(code)}</code>\n'
+                f'<code class="cll-line cll-link ln-{sk}{sc}" tabindex="0">'
+                f'{_e(code)}</code>\n'
             )
         else:
-            code_lines += f'<code class="cll-line">{_e(code)}</code>\n'
+            code_lines += f'<code class="cll-line{sc}">{_e(code)}</code>\n'
 
     boxes = ""
     for k in keys:
@@ -953,6 +1202,9 @@ def console_line_link(
         style_lines = [
             f"#{p} .cll-line {{ display:block; margin:0; padding:.1rem .7rem;"
             " font:14px/1.6 ui-monospace,monospace;"
+            # Each source line is a <code> (not a <pre>), so the default
+            # white-space:normal would collapse its leading indentation away.
+            " white-space:pre-wrap;"
             " background:var(--code-bg); color:var(--code-fg); }",
             # Program output is a light console panel, never dark code — the
             # output region overrides the shared dark .cll-line background.
@@ -984,6 +1236,9 @@ def console_line_link(
     style_lines = [
         f"#{p} .cll-line {{ display:block; margin:0; padding:.1rem .7rem;"
         " font:14px/1.6 ui-monospace,monospace;"
+        # Each source line is a <code> (not a <pre>), so the default
+        # white-space:normal would collapse its leading indentation away.
+        " white-space:pre-wrap;"
         " background:var(--code-bg); color:var(--code-fg); }",
         # Program output is a light console panel, never dark code — the output
         # region overrides the shared dark .cll-line background.
@@ -1020,14 +1275,18 @@ def console_line_link(
         # ``lang`` adds ``language-<lang>`` so highlight.js colours the row; the
         # console side passes "" (output is not code, must not be highlighted).
         lc = f" language-{lang}" if lang else ""
+        # Dim instrumentation on the SOURCE side only: the console side is the
+        # program's real output, where these markers have already been stripped.
+        dims = (dict(_scaffold_flags([c for c, _k in lines])) if lang else {})
         out = ""
         for code, k in lines:
+            sc = " code-scaffold" if dims.get(code) else ""
             if k:
                 sk = _safe(k)
-                out += (f'<code class="cll-line cll-link k-{sk}{lc}" tabindex="0">'
+                out += (f'<code class="cll-line cll-link k-{sk}{lc}{sc}" tabindex="0">'
                         f"{_e(code)}</code>\n")
             else:
-                out += f'<code class="cll-line{lc}">{_e(code)}</code>\n'
+                out += f'<code class="cll-line{lc}{sc}">{_e(code)}</code>\n'
         return out
 
     return (
@@ -1338,6 +1597,57 @@ def zoomable(comp_id: str, inner_html: str, *, label: str = "⤢ Enlarge") -> st
     )
 
 
+
+# Marking text changed after a lesson was taught (author, 2026-10-12). A demo
+# taught in a past lesson is a record of that lesson, so a later edit says so:
+#   [added <when>] Paragraph text.   -> a labelled box: "Added <when>."
+#   Paragraph text. [changed <date>: the text as taught]
+#                                    -> the paragraph, then a <details> line
+#                                       that opens the text as taught.
+_ADDED_RE = re.compile(r"\A\[added ([^\]\n]+)\]\s*")
+_CHANGED_RE = re.compile(r"\s*\[changed ([^:\]\n]+): ([^\]\n]+)\]\s*\Z")
+
+
+def _prose_inline(s: str) -> str:
+    return _emphasis(_inline_code(_prose_links(_demo_links(_e(s)))))
+
+
+def _paragraph_html(p: str, margin: str) -> str:
+    added = _ADDED_RE.match(p)
+    if added:
+        label = added.group(1).rstrip(".")
+        return (f'<div class="prose-added" style="margin:{margin};'
+                'border-left:4px solid var(--accent);padding:.2rem 0 .2rem .6rem">'
+                f'<p style="margin:0"><strong>Added {_e(label)}.</strong></p>'
+                f'<p style="margin:.3rem 0 0">{_prose_inline(p[added.end():])}</p></div>')
+    changed = _CHANGED_RE.search(p)
+    if changed:
+        when = changed.group(1).strip().rstrip(".")
+        return (f'<p style="margin:{margin}">{_prose_inline(p[:changed.start()])}</p>'
+                '<details class="prose-changed" style="margin:.2rem 0 0">'
+                f'<summary style="cursor:pointer;font-size:.9em">Changed {_e(when)}. '
+                'Show the text as taught.</summary>'
+                f'<p style="margin:.3rem 0 0;opacity:.85">{_prose_inline(changed.group(2))}</p>'
+                '</details>')
+    return f'<p style="margin:{margin}">{_prose_inline(p)}</p>'
+
+
+def _paragraphs_html(text: str) -> str:
+    """Escape *text* into one ``<p>`` per blank-line-separated paragraph.
+
+    A source string with a blank line in it (a YAML folded scalar turns that
+    into one literal ``\\n``) becomes one paragraph per line here. Text with
+    no blank line stays exactly one ``<p style="margin:0">`` — today's
+    behaviour, unchanged. A paragraph carrying an ``[added …]`` or
+    ``[changed …: …]`` marker is rendered as described above ``_ADDED_RE``.
+    """
+    paragraphs = [p for p in text.split("\n") if p.strip()]
+    return "".join(
+        _paragraph_html(p, "0" if i == 0 else ".6rem 0 0")
+        for i, p in enumerate(paragraphs)
+    )
+
+
 def _concept_aside_body(title: str, text: str) -> str:
     """The Key Idea aside's inner markup, shared by both aside renderers.
 
@@ -1345,8 +1655,8 @@ def _concept_aside_body(title: str, text: str) -> str:
     standalone in-tab aside (:func:`_concept_aside`) compose the identical
     (escaped) content — one place to change the aside's body.
     """
-    return (f'<b class="ccp-title">{_e(title)}</b>'
-            f'<p style="margin:0">{_e(text)}</p>')
+    body = _paragraphs_html(text)
+    return f'<b class="ccp-title">{_e(title)}</b>' + body
 
 
 def _concept_aside(comp_id: str, text: str, *, title: str = "Key Idea") -> str:
@@ -1544,7 +1854,15 @@ def stepped_boxchain(comp_id: str, steps: list, link_values: bool = False) -> st
         # A shown step is a flex row: the SVG on the left, its explanation in a panel
         # to the RIGHT (using the empty space next to the narrow chain) so the caption
         # is visible without scrolling to the bottom of the diagram. Zero JS.
-        f"#{p} .sbc-v {{ display:none; gap:1rem; align-items:flex-start; }}",
+        # ...but only while both fit. The chain is a fixed-width drawing, so in a
+        # narrow diagram column (426px on a rail page) the note's 11rem minimum
+        # left the SVG less than its own width and the browser SHRANK it, clipping
+        # the right edge of every box — measured, not guessed. `flex-wrap` drops
+        # the note underneath instead, and the SVG never shrinks below its
+        # intrinsic width. Wide columns are unaffected: both still sit side by side.
+        f"#{p} .sbc-v {{ display:none; gap:1rem; align-items:flex-start;"
+        f" flex-wrap:wrap; }}",
+        f"#{p} .sbc-v > svg {{ flex:0 0 auto; max-width:100%; }}",
         f"#{p} .sbc-note {{ margin:0; flex:1; min-width:11rem;"
         f" font:14px/1.5 system-ui; color:#222; background:#eef3fb;"
         f" border-left:3px solid #0b5394; padding:.55rem .75rem; border-radius:4px; }}",
@@ -1709,8 +2027,14 @@ def step_gauge(comp_id: str, steps: list) -> str:
             f'style="cursor:pointer;border:1px solid #bbb;border-radius:6px;'
             f'padding:2px 9px;font:13px system-ui;min-height:44px;'
             f'display:inline-flex;align-items:center">{i + 1}</label>')
+        # A step carrying a link key joins the code<->console highlight group of
+        # the line that moved the count, so hovering the step lights that line
+        # (and hovering the line lights the step). Pure enhancement: the key is
+        # absent unless the topic marked the line, and all a11y rides on the
+        # aria-label above.
+        gk = f' data-cll="{_e(s["key"])}"' if s.get("key") else ""
         views.append(
-            f'<div class="sg-v sg-v{i}" role="img" aria-label="{_e(aria)}">'
+            f'<div class="sg-v sg-v{i}"{gk} role="img" aria-label="{_e(aria)}">'
             f'<div class="sg-head">{head_html}</div>'
             f'<div class="sg-rail"><div class="sg-cap" style="width:{cap_pct:g}%">'
             f'<div class="sg-fill" style="width:{fill_pct:g}%"></div></div></div>'
@@ -1788,13 +2112,46 @@ def _console_body(pid: str, v: dict) -> str:
     output-tabs layout (:func:`demo_panel`), where the code shows once and only
     this console is tabbed.
     """
-    return (
-        '<div style="margin-top:.8rem">'
-        + compile_status_badge(f"{pid}-badge", v["ok"], kind=v.get("error_kind") or "compile")
-        + "</div>"
-        + output_console(f"{pid}-out", v["stdout"] if v["ok"] else v["stderr"],
-                         error=v["failed"], kind=v.get("error_kind") or "compile")
-    )
+    kind = v.get("error_kind") or "compile"
+    # The exact g++ line this tab was built with, above the verdict it produced.
+    # It goes here rather than into the code panel because a comment line at the
+    # top of the source would shift every line number the compiler and sanitizer
+    # reports cite, and rather than into the console because that panel is the
+    # program's own output. On an output-tabs topic (flag_variants) the code is
+    # shown once and only this body is tabbed, which is exactly where a per-tab
+    # flag set needs to appear.
+    cmd = v.get("compile_cmd") or ""
+    cmd_html = (f'<p class="build-cmd">{_e(cmd)}</p>' if cmd else "")
+    # A program that ran to its end and returned a nonzero code (a test
+    # harness reporting FAIL) compiled and did not crash: the badge says so and
+    # names the code, which is the run's verdict for any script that calls it.
+    code = v.get("exit_code")
+    label = f"Compiled · exit code {code}" if code else None
+    badge = (cmd_html
+             + '<div style="margin-top:.8rem">'
+             + compile_status_badge(f"{pid}-badge", v["ok"], kind=kind, label=label)
+             + "</div>")
+    if v["ok"]:
+        out = output_console(f"{pid}-out", v["stdout"], error=False, kind=kind)
+        if code and (v.get("stderr") or "").strip():
+            out += output_console(f"{pid}-err", v["stderr"], error=False, kind=kind,
+                                  title="Standard error")
+        return badge + out
+    # A crash is not a compile error. The program RAN, and what it printed before
+    # it died is evidence -- often the whole point of the tab, as when a line that
+    # a destructor would have printed is missing. Show that first, then the
+    # diagnostic that killed it. A failed COMPILE has no stdout, so it is
+    # unaffected.
+    # ...but not when the error panel is ALREADY showing that stdout: a program
+    # that fails with an empty stderr (a test harness exiting non-zero, say) has
+    # its stdout used as the diagnostic (see build_html's `report` fallback), and
+    # printing it twice would be noise -- and would double every count a test
+    # pins on it.
+    pre = ""
+    out = (v.get("stdout") or "").strip()
+    if kind == "runtime" and out and out != (v.get("stderr") or "").strip():
+        pre = output_console(f"{pid}-pre", v["stdout"], error=False, kind="compile")
+    return badge + pre + output_console(f"{pid}-out", v["stderr"], error=True, kind=kind)
 
 
 def _demo_variant_body(pid: str, v: dict, caption: str, diagram: bool = True,
@@ -1963,7 +2320,11 @@ def demo_panel(comp_id: str, entry: dict, diagram: bool = True,
                steps: dict | None = None, diagram_spec: dict | None = None,
                aside_html: dict | None = None,
                gauge: bool = False, console_link: bool = False,
-               link_diagram: bool = False) -> str:
+               link_diagram: bool = False,
+               tab_label: str | None = None,
+               tab_notes: dict | None = None,
+               tab_intro: dict | None = None,
+               extra_tabs: Sequence[dict] | None = None) -> str:
     """One demo's inner content: a variant_tabs cluster over a topic's baked data.
 
     A cases-topic variant carries a ``cases`` list; its sub-cases are stacked
@@ -1981,6 +2342,14 @@ def demo_panel(comp_id: str, entry: dict, diagram: bool = True,
     Key Idea aside beneath it INSIDE the tab; the outer two-column wrap is
     then skipped. Ignored when ``diagram`` is true, on output-tabs topics, and
     on cases variants (ENGINE_REQUEST_prompt-panel).
+
+    ``tab_label`` names the compiled tab of a single-variant topic (otherwise
+    "default"). ``tab_notes`` (keyed by shown tab label, raw HTML) adds a note
+    under that tab's console. ``tab_intro`` (keyed by shown tab label, raw HTML)
+    puts a note at the top of that tab, above its code; it applies to
+    ``extra_tabs`` too. ``extra_tabs`` (a list of ``{label, html}``)
+    appends tabs that hold only author HTML — a model reply with no code, say —
+    so they sit in the same strip, beside the same Key Idea, as the compiled one.
     """
     cid = _safe(comp_id)
 
@@ -2053,7 +2422,12 @@ def demo_panel(comp_id: str, entry: dict, diagram: bool = True,
                                       gauge=gauge,
                                       console_link=console_link,
                                       link_diagram=link_diagram)
-        panels.append((label, body))
+        shown = tab_label if (tab_label and len(entry["variants"]) == 1) else label
+        body = (tab_intro or {}).get(shown, "") + body + (tab_notes or {}).get(shown, "")
+        panels.append((shown, body))
+    for extra in extra_tabs or ():
+        panels.append((extra["label"],
+                       (tab_intro or {}).get(extra["label"], "") + extra["html"]))
     tabs = variant_tabs(cid, panels)
     if concept and not diagram and not aside_active:
         return code_concept_panel(f"{cid}-ccp", tabs, concept, title=concept_title)
@@ -2132,3 +2506,93 @@ def steps_diagram(comp_id: str, items: Sequence[tuple[str, str]], *,
         head += f'<p class="sd-cap">{_e(caption)}</p>\n'
     return (f'<div id="{p}" class="steps-diagram">\n<style>\n{style}</style>\n'
             f'{head}{progressive_steps(f"{p}-ol", items)}</div>\n')
+
+
+# ---------- replay exhibit: a recorded sequence, step by step ----------
+# A replay page replays one recorded process (for example one pipeline run) whose steps
+# happen in a fixed order: step 2's input contains step 1's output. The outer strip is
+# the sequence (step 1 preselected, so the spine is always visible); each step holds an
+# inner strip of toggle tabs with NO tab preselected (a second, identical-looking label
+# targets the strip's hidden "none" radio, so clicking an open tab closes it).
+# First used by ag_pipeline (2026-07-23); made a reusable block on 2026-10-17.
+
+# NO display property in _RP_LABEL: label visibility is controlled by each strip's
+# stylesheet, and an inline display would override it (the duplicate-tabs bug of 2026-07-23).
+_RP_LABEL = ("border:2px solid var(--border);border-radius:8px 8px 0 0;padding:.4rem .9rem;"
+             "min-height:44px;align-items:center;cursor:pointer;font-weight:700")
+_RP_HIDDEN = ("position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);"
+              "white-space:nowrap")
+_RP_PANELS = "border:2px solid var(--border);border-radius:0 8px 8px 8px;padding:.7rem"
+_RP_ACTIVE = "background:var(--accent);color:var(--accent-fg);border-color:var(--accent)"
+
+
+def replay_inner_strip(gid: str, tabs: Sequence[tuple[str, str]],
+                       aria: str = "Iteration content") -> str:
+    """One step's tabs: a toggle strip with nothing preselected.
+
+    Args:
+        gid: A short CSS-safe id for this strip.
+        tabs: ``(label, html)`` pairs, in the order the step happened.
+        aria: The accessible name of the tab group.
+    """
+    n = len(tabs)
+    css = [f"#{gid} .pnl{{display:none}}", f"#{gid} .pnls{{display:none}}",
+           f"#{gid} .strip label{{display:inline-flex}}", f"#{gid} .strip .cls{{display:none}}"]
+    for k in range(1, n + 1):
+        css += [
+            f"#{gid}-t{k}:checked ~ .strip .opn{k}{{display:none}}",
+            f"#{gid}-t{k}:checked ~ .strip .cls{k}{{display:inline-flex;{_RP_ACTIVE}}}",
+            f"#{gid}-t{k}:checked ~ .pnls{{display:block}}",
+            f"#{gid}-t{k}:checked ~ .pnls .pnl{k}{{display:block}}",
+        ]
+    radios = [f'<input type="radio" name="{gid}" id="{gid}-t0" style="{_RP_HIDDEN}" checked>']
+    radios += [f'<input type="radio" name="{gid}" id="{gid}-t{k}" style="{_RP_HIDDEN}">'
+               for k in range(1, n + 1)]
+    labels = []
+    for k, (name, _) in enumerate(tabs, 1):
+        labels.append(f'<label class="opn{k}" for="{gid}-t{k}" style="{_RP_LABEL}">{name}</label>')
+        labels.append(f'<label class="cls cls{k}" for="{gid}-t0" style="{_RP_LABEL}">{name}</label>')
+    panels = [f'<div class="pnl pnl{k}">{content}</div>' for k, (_, content) in enumerate(tabs, 1)]
+    return (f'<div id="{gid}"><style>' + "\n".join(css) + "</style>"
+            + "".join(radios)
+            + f'<div class="strip" role="group" aria-label="{aria}" style="display:flex;gap:.3rem;flex-wrap:wrap">'
+            + "".join(labels) + "</div>"
+            + f'<div class="pnls" style="{_RP_PANELS}">' + "".join(panels) + "</div></div>")
+
+
+def replay_strip(gid: str, steps: Sequence[tuple[str, Sequence[tuple[str, str]]]], *,
+                 step_label: str = "Iteration", aria: str = "Pipeline iterations",
+                 inner_aria: str = "Iteration content") -> str:
+    """A replay exhibit: an outer strip of steps, each with an inner strip of toggle tabs.
+
+    Args:
+        gid: A short CSS-safe id; step k's inner strip gets the id ``{gid}-i{k}-tabs``.
+        steps: One ``(head_html, tabs)`` pair per step, in order. ``head_html`` is shown
+            above the step's tabs (for example its verdict line); ``tabs`` is a list of
+            ``(label, html)`` pairs.
+        step_label: The word on each outer tab, followed by the step number.
+        aria: The accessible name of the outer strip.
+        inner_aria: The accessible name of each inner strip.
+
+    Returns:
+        The strip as HTML. Step 1 is preselected; no inner tab is.
+    """
+    n = len(steps)
+    panels = [head + replay_inner_strip(f"{gid}-i{k}-tabs", tabs, inner_aria)
+              for k, (head, tabs) in enumerate(steps, 1)]
+    css = [f"#{gid} > .ipnls > .ipnl{{display:none}}", f"#{gid} .istrip label{{display:inline-flex}}"]
+    for k in range(1, n + 1):
+        css += [
+            f'#{gid}-i{k}:checked ~ .istrip label[for="{gid}-i{k}"]{{{_RP_ACTIVE}}}',
+            f"#{gid}-i{k}:checked ~ .ipnls > .ipnl{k}{{display:block}}",
+        ]
+    radios = "".join(
+        f'<input type="radio" name="{gid}-iter" id="{gid}-i{k}" style="{_RP_HIDDEN}"{" checked" if k == 1 else ""}>'
+        for k in range(1, n + 1))
+    labels = "".join(f'<label for="{gid}-i{k}" style="{_RP_LABEL}">{step_label} {k}</label>'
+                     for k in range(1, n + 1))
+    body = "".join(f'<div class="ipnl ipnl{k}">{p}</div>' for k, p in enumerate(panels, 1))
+    return (f'<div id="{gid}"><style>' + "\n".join(css) + "</style>" + radios
+            + f'<div class="istrip" role="group" aria-label="{aria}" style="display:flex;gap:.3rem;flex-wrap:wrap">'
+            + labels + "</div>"
+            + f'<div class="ipnls" style="{_RP_PANELS}">' + body + "</div></div>")
