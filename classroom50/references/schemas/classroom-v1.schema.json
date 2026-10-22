@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/foundation50/classroom50/main/schemas/classroom-v1.schema.json",
+  "title": "classroom50/classroom/v1",
+  "description": "Machine-readable schema for <classroom>/classroom.json, the per-classroom metadata scaffolded by `gh teacher classroom add` (cli/gh-teacher/classroom.go, classroomJSON). Hand-authored classrooms omit `migrated_from`; it was written only by the retired `gh teacher classroom migrate` command (GitHub Classroom shut down) and stays in the schema so migrated classrooms keep validating. additionalProperties is true so a top-level field a newer binary or the web GUI adds survives a read-modify-write verbatim (the 'tolerate AND preserve' rule, via configrepo.ClassroomJSON.Extra). Known sub-objects (team/migrated_from) stay closed.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema", "name", "short_name", "term", "org"],
+  "properties": {
+    "schema": { "const": "classroom50/classroom/v1" },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable classroom name."
+    },
+    "short_name": {
+      "$ref": "#/$defs/shortName",
+      "description": "URL/path-safe slug; the directory name under the config repo and the Pages path segment."
+    },
+    "term": {
+      "type": "string",
+      "description": "Free-form term label (e.g., \"Fall 2026\"); may be empty."
+    },
+    "org": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The GitHub organization login that owns this classroom."
+    },
+    "migrated_from": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "classroom_id", "original_name", "original_org_login", "migrated_at"],
+      "description": "Provenance written only by the retired `gh teacher classroom migrate` command; kept for already-migrated classrooms.",
+      "properties": {
+        "source": { "type": "string", "minLength": 1 },
+        "classroom_id": { "type": "integer" },
+        "original_name": { "type": "string" },
+        "original_org_login": { "type": "string" },
+        "url": { "type": "string" },
+        "migrated_at": { "type": "string" }
+      }
+    },
+    "team": {
+      "$ref": "#/$defs/teamRef",
+      "description": "The per-classroom GitHub team (created by `gh teacher classroom add`) that grants rostered students read on private, org-owned assignment templates. Omitted on classrooms created before this feature."
+    },
+    "teams": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Per-classroom GitHub staff teams (created by the web GUI) backing in-app roles. Each is a `secret` team named `classroom50-<short_name>-<role>`. Teacher and head-TA (`hta`) teams get write on the config repo; the `ta` team gets read-only. Teacher/owner-only surfaces (org + classroom settings) are hidden from TAs and head-TAs client-side. Omitted on classrooms created before this feature.",
+      "properties": {
+        "teacher": { "$ref": "#/$defs/teamRef", "description": "The teacher staff team (`classroom50-<short_name>-teacher`)." },
+        "hta": { "$ref": "#/$defs/teamRef", "description": "The head-TA staff team (`classroom50-<short_name>-hta`), granted config-repo write like teacher but never org-owner." },
+        "ta": { "$ref": "#/$defs/teamRef", "description": "The teaching-assistant staff team (`classroom50-<short_name>-ta`), granted config-repo read-only." }
+      }
+    },
+    "secret": {
+      "type": "string",
+      "pattern": "^[a-z0-9]{4,64}$",
+      "description": "Optional access key for an unlisted classroom. When present, publish-pages serves this classroom's resources at an unguessable URL (`<classroom>/<secret>/...`) that every consumer inserts; when omitted, the plain `<classroom>/...` path. Obscurity, not access control — anyone with the link can read the files. Opt-in via `gh teacher classroom add --unlisted`."
+    },
+    "pages_base_url": {
+      "type": "string",
+      "pattern": "^https://[^\\s?#]{1,110}$",
+      "description": "Optional base URL where this org's published Pages resources are actually served, for orgs with a custom GitHub Pages domain (github.io answers a 301 the browser's CORS check rejects — foundation50/classroom50#776). Everything before the `/<classroom>[/<secret>]/...` segment, no trailing slash: `https://<domain>/classroom50` for an org-root custom domain, `https://<domain>` for a CNAME on the classroom50 repo itself. Browser readers try this base first and fall back to the `https://<org>.github.io/classroom50` default; server-side readers (CLIs, Actions) follow the redirect and may ignore it. Fleet caveat: gh-teacher releases that predate this field re-derive the team-description projection WITHOUT it on their next reconcile (the description compare is exact-string), stripping the custom domain from student discovery until a current writer restores it — upgrade every teacher's CLI before setting this."
+    },
+    "active": {
+      "type": "boolean",
+      "description": "Classroom lifecycle flag: false = archived, true or ABSENT = active (legacy classrooms read as active). Written only when a teacher toggles archive/unarchive. Archived classrooms drop out of the default classes list and block new assignments/edits; once published to classrooms-index.json the student accept page refuses too."
+    }
+  },
+  "$defs": {
+    "shortName": {
+      "type": "string",
+      "description": "URL/path-safe slug (2-100 chars). The cap matches GitHub's repo-name limit; it is per-segment, not a guarantee that the derived `<classroom>-<assignment>-<username>` student-repo name stays under 100 — budgeting the three against each other is an open question (foundation50/classroom50#691).",
+      "pattern": "^[a-z0-9][a-z0-9-]{1,99}$"
+    },
+    "teamRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "slug"],
+      "properties": {
+        "id": { "type": "integer", "description": "Immutable GitHub team id." },
+        "slug": { "type": "string", "minLength": 1, "description": "GitHub team slug; the authoritative addressing key for membership/repo-grant ops." }
+      }
+    }
+  }
+}

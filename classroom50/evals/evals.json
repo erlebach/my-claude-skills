@@ -1,0 +1,49 @@
+{
+  "skill_name": "classroom50",
+  "evals": [
+    {
+      "id": 0,
+      "name": "score-not-updating-diagnosis",
+      "prompt": "One of my students swears she pushed her work for problem set 2 hours ago, but the score on my end still shows nothing. Where do I even look to figure out what went wrong?",
+      "expected_output": "Explains that scores refresh only when collection runs (Collect now / Collect all / collect-scores workflow) and that background collection needs a provisioned service token; walks through checking the student's repo Actions run and the grading Release; cites Troubleshooting / Autograding-Basics / How-Classroom-50-Works.",
+      "files": [],
+      "assertions": [
+        "Explains that scores refresh only when a collection run happens (Collect now / Collect all / collect-scores workflow), not automatically on push",
+        "Directs the teacher to the grading Actions run and/or the grading Release on the student's own assignment repository",
+        "Raises the service token (scope or expiry) as a likely cause of collection returning nothing",
+        "Considers submission mode - a tag-mode assignment does not grade on ordinary pushes",
+        "Cites at least one specific Classroom 50 wiki page or URL",
+        "Contains no invented Classroom 50 feature, command, flag, or UI element"
+      ]
+    },
+    {
+      "id": 1,
+      "name": "migrating-from-github-classroom-cpp",
+      "prompt": "I'm moving my intro C++ course over from GitHub Classroom this term. What's actually different about Classroom 50 that's going to bite me, and how does autograding a C++ assignment work?",
+      "expected_output": "Names the real architectural differences (no server, GitHub is the backend, teacher must be signed in, no webhooks/notifications, students are admins of their own repos, no roster self-identification at accept, students can't see scores in-app) and gives the C/C++ autograder recipe from the docs.",
+      "files": [],
+      "assertions": [
+        "Names at least three genuine documented differences from GitHub Classroom (no server/GitHub is the backend, work runs only as the signed-in teacher, no webhooks or notifications, students are admins of their own repos, no roster self-identification at accept, students cannot see scores in-app, email invites cannot be resolved to accounts)",
+        "Gives a C/C++ autograder test specification in the documented shape (name/type/run/points, with type 'run' and/or 'io', and a setup step for compilation)",
+        "Notes that compilers and make are preinstalled on Ubuntu runners and/or that extra packages come from the runtime apt list",
+        "Cites at least one specific Classroom 50 wiki page or URL",
+        "Contains no invented Classroom 50 feature, command, flag, or UI element"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "actions-cost-and-student-grade-visibility",
+      "prompt": "Two things before I commit to this: with ~120 students pushing constantly, am I going to get billed for GitHub Actions minutes? And can students actually see their own grades inside the app?",
+      "expected_output": "Explains Actions cost for the org plan and the documented levers for reducing it (including the spending cap and pausing grading), and states clearly that students cannot see scores in the app because Release assets can't be read cross-origin, pointing them to Releases or the feedback PR.",
+      "files": [],
+      "assertions": [
+        "States that the organization is billed for Actions minutes, never the students, and that the Team plan includes 3,000 minutes per month",
+        "Explains that in the default every-push submission mode each push grades, and each run bills at least a full rounded-up minute",
+        "Names switching the submission type to a tagged commit (--submission-mode tag) as the biggest cost lever for a large roster",
+        "Names at least one further documented lever (public repository visibility being free, the no-autograder option, pausing grading, self-hosted runners, the Actions spending limit, or GitHub Education credits)",
+        "States clearly that students cannot see their grades inside the app, gives the documented reason (Release assets are not readable cross-origin), and points to the Releases page or feedback pull request instead",
+        "Cites at least one specific Classroom 50 wiki page or URL"
+      ]
+    }
+  ]
+}

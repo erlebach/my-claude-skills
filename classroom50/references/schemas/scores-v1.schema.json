@@ -1,0 +1,213 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/foundation50/classroom50/main/schemas/scores-v1.schema.json",
+  "title": "classroom50/scores/v1",
+  "description": "Machine-readable schema for <classroom>/scores.json, the gradebook written by collect_scores.py (cli/gh-teacher/skeleton/dotgithub/scripts/) and read by `gh teacher download`. The root `assignments` object is keyed by assignment slug; each value is an assignmentBucket `{ \"type\": \"individual\"|\"group\"|\"team\", \"entries\": [...] }`. An `entry` is one student repo's gradebook record: identity/keying at the top level (`owner` — the repo owner login, the stable per-bucket key; `member_usernames` — for a group or team entry, the credited roster members; `team_slug` — for a team entry, the credited GitHub Team) plus a `submissions` list holding EVERY collected submission (newest first), each a result.json (classroom50/result/v1) payload with the `assignment` field DROPPED (it's the bucket key) and an optional collection-added `late` flag. A teacher `override` flag may be set on the entry. An assignment that SKIPS GRADING (empty_repo or no_autograder) publishes no submit/* releases, so its `entries` stays [] and its submissions are recorded in the optional `detected` list instead — presence and count only, never a score. Rules JSON Schema cannot express, enforced in code: (1) within a bucket, entries are keyed by the repo `owner` login (lowercased) — a key is unique per bucket; (2) the same identity/score cross-field rules as result/v1 apply to each submission record; (3) the bucket `type` mirrors assignments.json `mode`; (4) `detected` records are keyed by `owner` too, and a bucket never carries both a graded entry and a detected record for the same owner. Backward compatibility with pre-canonical shapes is intentionally NOT supported — this schema describes the only accepted form.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "assignments"],
+  "properties": {
+    "schema": { "const": "classroom50/scores/v1" },
+    "assignments": {
+      "type": "object",
+      "description": "Assignment slug -> assignmentBucket. `{}` (never null) at scaffold time.",
+      "propertyNames": { "$ref": "#/$defs/shortName" },
+      "additionalProperties": { "$ref": "#/$defs/assignmentBucket" }
+    }
+  },
+  "$defs": {
+    "shortName": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{1,99}$"
+    },
+    "assignmentBucket": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One assignment's gradebook: its mode plus the per-repo entries.",
+      "required": ["type", "entries"],
+      "properties": {
+        "type": {
+          "enum": ["individual", "group", "team"],
+          "description": "The assignment mode, mirroring assignments.json `mode`."
+        },
+        "entries": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/entry" },
+          "description": "One entry per student repo (keyed by owner). `[]` when nothing collected yet."
+        },
+        "collected_at": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\dZ$",
+          "description": "Optional. The wall-clock UTC instant collection last walked THIS assignment (stamped even when nothing changed, so per-assignment freshness is knowable — an org-wide run timestamp can't say whether a scoped run touched this bucket). Absent on files written before this field existed and on buckets a scoped run skipped."
+        },
+        "detected": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/detectedRecord" },
+          "description": "Optional. Presence/count records for an assignment that SKIPS GRADING (empty_repo or no_autograder): those repos publish no submit/* release, so `entries` stays [] for them and this list is the only submission signal. Deliberately NOT `entries`: a detected submission has no score, tests, release or review, and writing one as a submissionRecord would fabricate a grade. One record per repo owner; absent when the assignment autogrades or was never collected."
+        }
+      }
+    },
+    "detectedRecord": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "One repo's DETECTED submissions for an assignment that skips grading — presence and count only, never a score. Derived from repo state (default-branch commits past the accept baseline, or submission tags), mirroring the web app's submissionDetection domain. additionalProperties is true so later-added fields survive ingest verbatim.",
+      "required": ["owner", "count"],
+      "properties": {
+        "owner": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The repo owner login (from the <classroom>-<assignment>-<username> repo-name formula) — the stable per-bucket key, same role as an entry's `owner`."
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "How many submissions were detected for this repo. A repo with none detected is OMITTED rather than recorded as 0, so the list of records is the set of submitters."
+        },
+        "kind": {
+          "enum": ["commit", "tag"],
+          "description": "Optional. Which submission definition produced these detections: default-branch commits (branch mode) or submission tags (tag mode)."
+        },
+        "latest_datetime": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\dZ$",
+          "description": "Optional. The newest detected submission instant, for the gradebook's 'Last submitted' column. Absent when no detection carried a resolvable time."
+        },
+        "late": {
+          "type": "boolean",
+          "description": "Optional. True when `latest_datetime` is after the assignment `due`. Absent when the assignment has no `due` or no resolvable time."
+        },
+        "member_usernames": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "GROUP and TEAM assignments only: the credited members for this repo (owner always included for legacy group), same resolution as an entry's `member_usernames`. Absent on individual assignments."
+        },
+        "team_slug": {
+          "type": "string",
+          "pattern": "^classroom50-group-[0-9a-f]{16}-[1-9][0-9]*$",
+          "description": "TEAM assignments only: the GitHub Team slug whose membership was credited, same role as an entry's `team_slug`. Absent otherwise."
+        }
+      }
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "One student repo's gradebook entry: identity/keying fields plus the full submission history. additionalProperties is true so collection-added or hand-added fields survive ingest verbatim.",
+      "required": ["owner", "submissions"],
+      "properties": {
+        "owner": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The repo owner login (from the <classroom>-<assignment>-<username> repo-name formula). The STABLE per-bucket key collection uses to match entries across re-collects — for a group submission the credited member set can change between collects, but the owner is invariant, so the entry is replaced in place rather than duplicated. For an individual assignment the owner is the sole credited student. For a `team` assignment the key is the repo-name tail `group-<n>` (the team counter segment) — no username appears in a team repo's name."
+        },
+        "member_usernames": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "GROUP and TEAM entries only: the credited members. Legacy group: the repo's roster-intersected collaborators (owner always included), resolved by collection. Team: the group team's members intersected with the classroom team, resolved by collection from the GitHub Team — never from repo collaborators. Absent on individual entries, where `owner` is the sole member."
+        },
+        "team_slug": {
+          "type": "string",
+          "pattern": "^classroom50-group-[0-9a-f]{16}-[1-9][0-9]*$",
+          "description": "TEAM entries only: the GitHub Team slug (`classroom50-group-<hash>-<n>`) whose membership was credited, recorded so the gradebook can deep-link the team and keep an attribution trail that survives config-repo loss. Absent on individual and legacy group entries."
+        },
+        "submissions": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/submissionRecord" },
+          "description": "Every collected submission for this repo, newest first. submissions[0] is the latest. Each item is a result/v1 payload minus the bucket-key `assignment`."
+        },
+        "override": {
+          "type": "boolean",
+          "description": "Teacher flag. `true` => the entry is preserved verbatim and never refreshed by collection. `false` => an explicit 'keep refreshing' marker that survives replacement."
+        }
+      }
+    },
+    "submissionRecord": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "One collected submission: a result/v1 payload minus the bucket-key `assignment`, plus an optional collection-added `late` flag. additionalProperties is true so an autograder's extra top-level diagnostic fields survive ingest verbatim.",
+      "required": [
+        "schema",
+        "classroom",
+        "assignment_type",
+        "owner",
+        "submission",
+        "commit",
+        "release",
+        "review",
+        "datetime",
+        "score",
+        "max-score",
+        "tests"
+      ],
+      "properties": {
+        "schema": {
+          "const": "classroom50/result/v1",
+          "description": "Submission records retain the per-result sentinel (not a scores sentinel) — they are stored result payloads."
+        },
+        "classroom": { "type": "string", "minLength": 1 },
+        "assignment_type": { "enum": ["individual", "group", "team"] },
+        "owner": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The repo owner login — the identity anchor stamped by the runner."
+        },
+        "submission": { "type": "string", "pattern": "^submit/" },
+        "commit": { "type": "string", "minLength": 1 },
+        "release": { "type": "string", "minLength": 1 },
+        "review": { "type": "string", "minLength": 1 },
+        "datetime": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\dZ$",
+          "description": "The submission instant (the graded commit's committer date), invariant across regrades. The `late` flag is derived from this vs the assignment `due`."
+        },
+        "graded_at": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\dZ$",
+          "description": "Optional. The wall-clock instant this submission was last (re-)graded; moves on every regrade, unlike `datetime`. Absent on results produced before this field existed."
+        },
+        "score": { "type": "integer", "minimum": 0 },
+        "max-score": { "type": "integer", "minimum": 0 },
+        "tests": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/testResult" }
+        },
+        "late": {
+          "type": "boolean",
+          "description": "Collection-added: true when this submission's datetime is after the assignment `due`. Absent when the assignment has no `due`."
+        },
+        "submitted_by": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["username"],
+          "description": "The GitHub actor who pushed this submission (stamped by the runner from GITHUB_ACTOR/GITHUB_ACTOR_ID). For a group submission the score is credited to every member in the entry's `member_usernames`, but `submitted_by` records who actually pushed this particular submission. Absent on results produced before this field existed.",
+          "properties": {
+            "username": { "type": "string", "minLength": 1 },
+            "id": { "type": ["integer", "null"] }
+          }
+        }
+      }
+    },
+    "testResult": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["test-name", "passed", "score", "max-score"],
+      "description": "One graded test. additionalProperties is true: an autograder.py may attach extra diagnostic fields (e.g., output, message) that the runner and collector preserve verbatim.",
+      "properties": {
+        "test-name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable test name (the declarative grader uses the assignment test `name`)."
+        },
+        "passed": { "type": "boolean" },
+        "score": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Points earned on this test. Must be <= this test's max-score (cross-field, enforced in code)."
+        },
+        "max-score": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

@@ -1,0 +1,504 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/foundation50/classroom50/main/schemas/assignments-v1.schema.json",
+  "title": "classroom50/assignments/v1",
+  "description": "Machine-readable schema for <classroom>/assignments.json, mirroring the authoritative Go validators in cli/gh-teacher (assignments_json.go, tests.go, runtime.go). Intended for non-CLI clients (e.g., the GUI) to validate before writing. Four rules JSON Schema cannot express: (1) test names must be UNIQUE within an assignment, (2) name length is capped at 100 BYTES (UTF-8), not characters, (3) release_assets basenames must be UNIQUE within an assignment, and (4) configured release_assets path strings are capped at 8,192 raw UTF-8 bytes in aggregate — enforce all four client-side. Parser normalizations this schema intentionally rejects include a missing or empty `autograder` (normalized to \"default\") and `release_assets: null` (normalized to absence) — clients should always write normalized forms, as the CLI does.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "assignments"],
+  "properties": {
+    "schema": { "const": "classroom50/assignments/v1" },
+    "assignments": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/assignment" }
+    }
+  },
+  "$defs": {
+    "shortName": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{1,99}$"
+    },
+    "assignment": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "One assignment record. additionalProperties is true so a top-level field a newer binary or the web GUI adds survives a read-modify-write verbatim (the 'tolerate AND preserve' rule: CLI via AssignmentEntry.Extra, web via the `...source` spread). Known sub-objects (template/due_meta/runtime, and each tests item) stay closed so a typo inside one is still a hard error.",
+      "required": ["slug", "name", "mode", "autograder"],
+      "properties": {
+        "slug": { "$ref": "#/$defs/shortName" },
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "template": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["owner", "repo", "branch"],
+          "properties": {
+            "owner": { "type": "string", "minLength": 1 },
+            "repo": { "type": "string", "minLength": 1 },
+            "branch": { "type": "string", "minLength": 1 }
+          }
+        },
+        "due": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(\\.\\d+)?(Z|[+-]([01]\\d|2[0-3]):[0-5]\\d)$",
+          "description": "RFC 3339 timestamp. The CLI normalizes the teacher's input to a UTC instant (e.g., 2026-09-16T03:59:00Z) and records the original value/zone in `due_meta`; clients should write UTC too. The pattern still permits any offset so older files validate. Advisory: collect-scores compares it against each submission's datetime and marks rows `late` in scores.json; nothing enforces the deadline."
+        },
+        "due_meta": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["input", "offset", "source"],
+          "properties": {
+            "input": {
+              "type": "string",
+              "description": "The due value as supplied (--due flag or migrated source deadline), whitespace-trimmed but otherwise verbatim, before UTC normalization."
+            },
+            "zone": {
+              "type": "string",
+              "description": "Best-effort IANA/local zone name; present only when the offset was auto-detected (an explicit offset carries no zone name)."
+            },
+            "offset": {
+              "type": "string",
+              "pattern": "^[+-]([01]\\d|2[0-3]):[0-5]\\d$",
+              "description": "Zone offset applied at normalization, e.g., -04:00 (UTC is +00:00)."
+            },
+            "source": {
+              "enum": ["explicit-offset", "auto-detected", "migrated"],
+              "description": "How the offset was determined: from the input itself, auto-detected from the machine's local zone, or carried in from a migrated deadline."
+            }
+          },
+          "description": "Write-side provenance for `due`, for auditing a wrong-zone deadline. Advisory metadata only -- collect-scores reads `due`, never this."
+        },
+        "available_from": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(\\.\\d+)?(Z|[+-]([01]\\d|2[0-3]):[0-5]\\d)$",
+          "description": "RFC 3339 timestamp (mirrors `due`): the release date at/after which the assignment is listed on the student's assignments page for everyone. HIDE-BY-DEFAULT: an absent or future value keeps the assignment OFF the student list — students can only accept it via the invite link until the release date passes. A student who has already accepted (their repo exists) always sees it. The CLI normalizes the teacher's input to a UTC instant and records the original value/zone in `available_from_meta`; clients should write UTC too. LISTING-ADVISORY ONLY, not access control: assignments.json is published publicly to GitHub Pages, so a determined student can still read the raw file or a saved accept link — this gates the student UI listing, nothing else."
+        },
+        "available_from_meta": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["input", "offset", "source"],
+          "properties": {
+            "input": {
+              "type": "string",
+              "description": "The available_from value as supplied (--available-from flag or GUI input), whitespace-trimmed but otherwise verbatim, before UTC normalization."
+            },
+            "zone": {
+              "type": "string",
+              "description": "Best-effort IANA/local zone name; present only when the offset was auto-detected (an explicit offset carries no zone name)."
+            },
+            "offset": {
+              "type": "string",
+              "pattern": "^[+-]([01]\\d|2[0-3]):[0-5]\\d$",
+              "description": "Zone offset applied at normalization, e.g., -04:00 (UTC is +00:00)."
+            },
+            "source": {
+              "enum": ["explicit-offset", "auto-detected", "migrated"],
+              "description": "How the offset was determined: from the input itself, auto-detected from the machine's local zone, or carried in from a migrated value."
+            }
+          },
+          "description": "Write-side provenance for `available_from` (same shape as `due_meta`), for auditing a wrong-zone release date. Advisory metadata only."
+        },
+        "mode": {
+          "enum": ["individual", "group", "team"],
+          "description": "`individual` = one repo per student. `group` = the LEGACY shared repo: the first accepter creates it and becomes its admin, then adds teammates as direct repo collaborators with `gh student invite`. Group size is advisory — `max_group_size` is a coordination hint the founder is expected to respect, NOT a hard security cap. `gh student invite` does apply it as a best-effort guardrail (it refuses to add a collaborator past the cap when run from inside the founder's own group repo), but it is bypassable (the GitHub UI, or simply not running the CLI) — the joiner-driven `gh student group join` that once enforced it was removed. Group mode still REQUIRES `max_group_size` (>= 2) as a contract field for clients like the GUI; individual mode must omit it. `team` = a shared repo owned by a per-assignment GitHub Team named `classroom50-group-<hash>-<n>` (hash = 16-hex SHA-256 prefix over the lowercased classroom and assignment slugs; n = a counter from 1): membership lives on the team, the repo is named `<classroom>-<assignment>-group-<n>` and linked authoritatively by the team->repo attachment, and grading credits team members — not repo collaborators. Team mode REQUIRES `max_group_size` AND `team_formation`; see the conditionals at the assignment level. Old clients reject unknown modes, which is the intended fail-safe for files written by newer releases."
+        },
+        "autograder": {
+          "$ref": "#/$defs/shortName",
+          "description": "Workflow-shim name; `default` for the universal shim. NOT the grading logic — that's autograder.py or `tests`."
+        },
+        "team_formation": {
+          "enum": ["teacher", "student"],
+          "description": "Who forms the groups of a `team` assignment. `teacher` = only the teacher (an org owner) creates the group teams and their memberships (from the Teams page or `gh teacher team`); accept clients refuse to found a team AND refuse a membership held with the maintainer role — the group-team name is derivable from public data, so a student could otherwise found a shape-matching team, and the maintainer role is the tell (teacher-created teams never leave a student maintainer); the teams are created `secret`. Like every client-side gate this is advisory (GitHub permissions are the hard boundary), and teacher tooling additionally surfaces unrecorded teams as drift. `student` = self-service: the first student founds the team through a Classroom 50 client (becoming its GitHub team maintainer), names it via the display-name record, and adds roster teammates; the teams are created `closed` (visible to every org member) so classmates can browse existing groups and use GitHub's native request-to-join flow — the REST API exposes no join requests, so requesting and reviewing happen on the team's GitHub page. The app enforces `max_group_size` and roster membership at add time, but GitHub itself cannot prevent a maintainer from drifting membership later — clients surface drift against the committed teams.json snapshot instead. REQUIRED for `mode: team` and MUST be omitted otherwise (see the conditional at the assignment level)."
+        },
+        "max_group_size": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 100,
+          "description": "Advisory maximum group size. REQUIRED for `mode: group` and `mode: team` (>= 2) and MUST be omitted for `mode: individual`. This is a CONTRACT field, not a hard security ceiling. Legacy group mode: `gh student invite` enforces it as a best-effort guardrail (refusing to add a collaborator past the cap when run from inside the founder's own group repo), but the check is advisory and bypassable (e.g., adding collaborators via the GitHub UI). Team mode: every Classroom 50 client refuses to add a member past the cap at team-formation time, but a student-formed team's maintainer can still bypass it on GitHub directly — clients surface the oversize instead. Retained in the schema/assignments.json so clients such as the GUI can display and enforce it client-side."
+        },
+        "runtime": { "$ref": "#/$defs/runtime" },
+        "tests": {
+          "type": "array",
+          "maxItems": 100,
+          "items": { "$ref": "#/$defs/test" },
+          "description": "Declarative tests. Mutually exclusive with a per-assignment autograder.py at <classroom>/autograders/<slug>/ — probe before writing."
+        },
+        "test_defaults": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "failure-details": { "enum": ["full", "actual-only", "none"] },
+            "show-output": { "type": "boolean" }
+          },
+          "description": "Assignment-level defaults for the per-test reporting options `failure-details` and `show-output` (see #/$defs/test for their semantics); a test's own value overrides. Only meaningful alongside `tests` — the materializer copies it into tests.json's `defaults` and it is otherwise ignored. Omit entirely for the built-in defaults (failure-details `full`, show-output `false`); like `runtime` it is a CLOSED sub-object, so a new sub-key must ship in lockstep across this schema, the Go TestDefaults struct, and the web Assignment['test_defaults'] type in the same release."
+        },
+        "feedback_pr": {
+          "type": "boolean",
+          "description": "Opt the assignment into the Feedback Pull Request: one long-lived PR per student repo (base = a frozen branch at the baseline commit, head = the default branch) for inline teacher review of the full starter→submission diff. Both accept clients open it at accept time (best-effort, so it exists even with GitHub Actions disabled); the autograde runner adopts that PR by base+head and maintains it, and remains the fallback creator when accept could not. Product default is ON (both `gh teacher assignment add` and the GUI create it enabled). On the wire it is collapsed: the CLI omits the field when false (omitempty), so readers must treat an absent field as `false`; the GUI may also write `false` explicitly, so accept both. Absent or false means the PR never opens."
+        },
+        "empty_repo": {
+          "type": "boolean",
+          "description": "Opt the assignment into truly bare student repos: accept creates the repo with no initial commit (auto_init false) and commits NO control files — no README, no .classroom50.yaml accept marker, no .github/workflows/autograde.yaml shim. Autograding and the Feedback PR are disabled for the assignment; regrade and score collection skip it. Mutually exclusive with template, tests, feedback_pr, allowed_files, release_assets, and pass_threshold (see the conditional at the assignment level). IMMUTABLE after creation: flipping it later would require retrofitting control files into (or stripping them from) every already-accepted student repo, so writers must reject an edit that changes it. On the wire it is collapsed like feedback_pr: the CLI omits the field when false (omitempty), so readers must treat an absent field as `false`; accept an explicit `false` too."
+        },
+        "no_autograder": {
+          "type": "boolean",
+          "description": "Opt a TEMPLATED assignment into teacher-supplied CI: accept commits the .classroom50.yaml marker and the template's generated content but NO autograde shim — neither the universal default shim nor a Pages-fetched teacher-authored workflow. The teacher supplies their own .github/ CI inside the template. Autograding is disabled for the assignment; regrade and score collection skip it, exactly as they skip empty_repo (it produces no submit/* releases). REQUIRES a template (the template carries the workflows — use empty_repo for a bare repo with no CI). UNLIKE empty_repo it PERMITS the Feedback PR (a templated repo has starter content and a baseline commit to diff against). Mutually exclusive with empty_repo (a bare repo already commits no shim), with a non-default autograder (which fetches a teacher-authored workflow from Pages — the opposite of adding nothing), and with the grading-adjacent fields tests/allowed_files/release_assets/pass_threshold (no shim exists to trigger). submission_mode/submission_tags ARE permitted: with no shim they carry no trigger, but they remain the submissions-page detection definition (branch commits / milestone tags). See the conditional at the assignment level. IMMUTABLE after creation like empty_repo: student repos are provisioned (shim or no shim) at accept time and never retrofitted, so writers must reject an edit that changes it. On the wire it is collapsed like empty_repo/feedback_pr: the CLI omits the field when false (omitempty), so readers must treat an absent field as `false`; accept an explicit `false` too."
+        },
+        "init_shim": {
+          "type": "boolean",
+          "description": "Opt a TEMPLATE-LESS assignment into an initialized-but-README-less repo that carries ONLY the control files: accept creates the repo with an initial commit and commits the .classroom50.yaml marker + the universal default autograde shim (.github/workflows/autograde.yaml) — but NO README and no other starter content. UNLIKE empty_repo (which is a bare repo with zero commits and no shim, and which NEVER autogrades), an init_shim repo DOES autograde: it commits the default shim, produces submit/* releases, and is collected/regraded exactly like any built-in-autograder assignment — so the grading pipeline (collect_scores.py / regrade_repos.py / autograde-runner.yaml) treats it as a normal grading assignment and does NOT skip it. It is the 'built-in autograder on an otherwise-empty repo' state. REQUIRES the default autograder and NO template (a template provides its own starter content — use a plain templated assignment for that). Mutually exclusive with empty_repo (bare, no shim), template (starter content comes from the template), no_autograder (the no-shim state), and a non-default autograder (which fetches a teacher-authored workflow from Pages). PERMITS the grading-adjacent fields (tests/allowed_files/release_assets/pass_threshold/submission_mode/submission_tags/feedback_pr) because it autogrades. See the conditional at the assignment level. IMMUTABLE after creation like empty_repo/no_autograder: student repos are provisioned at accept time and never retrofitted, so writers must reject an edit that changes it. On the wire it is collapsed like empty_repo/no_autograder/feedback_pr: the CLI omits the field when false (omitempty), so readers must treat an absent field as `false`; accept an explicit `false` too."
+        },
+        "include_all_branches": {
+          "type": "boolean",
+          "description": "Opt a TEMPLATED assignment into copying ALL of the template's branches (not just the default branch) when each student repo is generated: accept passes include_all_branches to GitHub's POST /repos/{template}/generate. REQUIRES a template (it only affects the generate call — a template-less repo is never generated). Mutually exclusive with empty_repo and init_shim (both template-less, never generated). COMPATIBLE with everything else, including no_autograder (a templated teacher-supplied-CI assignment may still want all branches) and the grading-adjacent fields (branches do not affect grading — the grading pipeline never reads this field). ACCEPT-TIME ONLY and NOT immutable: it governs what NEW student repos get; changing it affects only repos generated from now on (like submission_mode, not like empty_repo — already-accepted repos are never re-generated). On the wire it is collapsed like feedback_pr: the CLI omits the field when false (omitempty), so readers must treat an absent field as `false`; accept an explicit `false` too."
+        },
+        "copy_about": {
+          "type": "boolean",
+          "description": "Opt a TEMPLATED assignment into copying the TEMPLATE repo's About (its `description`) onto each student repo at ACCEPT TIME, on FRESH CREATE only — because GitHub's POST /repos/{template}/generate does NOT copy the template's description (a generated repo starts blank). Accept reads the template repo's current description and applies it via PATCH /repos/{org}/{repo}. REQUIRES a template (a template-less/empty_repo assignment has no source to copy from). Best-effort/fail-open: a rejected PATCH is logged and does not fail accept, and an empty template description is skipped (never blanks an existing value). ACCEPT-TIME ONLY and NOT immutable: it governs what NEW student repos get and is NOT retrofitted to already-accepted repos, nor re-asserted on re-accept (a student's own later edit survives). On the wire it is collapsed like feedback_pr: writers omit the field when false (omitempty), so readers must treat an absent field as `false`; accept an explicit `false` too."
+        },
+        "copy_topics": {
+          "type": "boolean",
+          "description": "Opt a TEMPLATED assignment into copying the TEMPLATE repo's Topics onto each student repo at ACCEPT TIME, on FRESH CREATE only — because GitHub's POST /repos/{template}/generate does NOT copy the template's topics (a generated repo starts with none). Accept reads the template repo's current topics and applies them via PUT /repos/{org}/{repo}/topics. REQUIRES a template (a template-less/empty_repo assignment has no source to copy from). Best-effort/fail-open: a rejected request is logged and does not fail accept, and an empty template topic list is skipped (never clears an existing set). ACCEPT-TIME ONLY and NOT immutable: it governs what NEW student repos get and is NOT retrofitted to already-accepted repos, nor re-asserted on re-accept. On the wire it is collapsed like feedback_pr: writers omit the field when false (omitempty), so readers must treat an absent field as `false`; accept an explicit `false` too."
+        },
+        "feedback_pr_template": {
+          "type": "boolean",
+          "description": "Opt the assignment's Feedback PR into using the TEMPLATE repo's native pull request template as the PR body instead of the built-in Classroom 50 body. When set, the accept clients (and the autograde runner's fallback creator, best-effort) read the first existing of `.github/pull_request_template.md`, `pull_request_template.md`, or `docs/pull_request_template.md` from the template repo at the template branch and use its contents VERBATIM as the Feedback PR body (no placeholder substitution). REQUIRES `feedback_pr: true` and a `template` (see the conditional at the assignment level); it is therefore never valid with empty_repo, which forces feedback_pr false. Best-effort/fail-open: a missing file, an empty (after-trim) file, an oversized file, or a read error falls back to the built-in body and never blocks PR creation. It is the teacher's responsibility to ensure the template repo carries the intended pull request template. On the wire it is collapsed like feedback_pr: writers omit the field when false (omitempty), so readers must treat an absent field as `false`; accept an explicit `false` too."
+        },
+        "locked": {
+          "type": "boolean",
+          "description": "Lock the assignment against student access. The web accept page, the student assignments list, the student submission view, and `gh student accept` all refuse a locked assignment for EVERY student, including one who already accepted. UNLIKE available_from (which is listing-advisory only), this is intended as access control — but because assignments.json is published publicly to GitHub Pages, the client gates are still best-effort UX; a determined student can read the raw file. The ENFORCEABLE boundary applies only to a PRIVATE, in-org template: locking also removes the classroom STUDENT team's read on that template repo (teacher/head-TA/TA teams are left untouched), so no new student can generate a repo from it while locked; unlocking re-grants that read. Public-template and template-less assignments can only be UX-gated, never hard-blocked. Existing student repos are not deleted. On the wire it is collapsed like feedback_pr/empty_repo: the CLI omits the field when false (omitempty), so readers must treat an absent field as `false`; accept an explicit `false` too."
+        },
+        "closed": {
+          "type": "boolean",
+          "description": "Close the assignment's submission window. UNLIKE locked, closed is narrow: its ONLY effect is that the web accept flow and `gh student accept` refuse a NEW accept while it is true. It does NOT hide the assignment from students (the student list, submission view, and an already-accepted student's read all remain), and it does NOT touch any template team's read — that is locked-only. The teacher-facing 'Close submission' action pairs this flag with a bulk collaborator downgrade that sets every accepted student's role on their own repo to read (pull); the repo downgrade is applied per-repo and is not represented here (closed reflects intent/window state, not a live per-repo permission audit). closed and locked are independent axes and may both be set. Like feedback_pr/locked it is collapsed on the wire: the CLI omits the field when false (omitempty), so readers must treat an absent field as `false`; accept an explicit `false` too."
+        },
+        "allowed_files": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?!\\s*$)[^\\u0000\\n]+$"
+          },
+          "description": "Ordered .gitignore-style patterns defining which files belong to the submission (order matters, last match wins, `!` re-includes). Example: [\"*\", \"!hello.py\"] ignores everything then re-includes hello.py — an allowlist of exactly hello.py. Empty/absent means every file is allowed. The autograde runner enforces it best-effort by removing disallowed working-tree files before grading (control files like .classroom50.yaml and .github/ are always kept), but fails open on git/resource failure — so it is a grading-scope/hygiene tool, not a secret-hiding boundary; `gh student submit` applies it as a best-effort pre-push filter."
+        },
+        "release_assets": {
+          "type": "array",
+          "maxItems": 50,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?!.*[\\u0000-\\u001f\\u007f-\\u009f])(?![\\s\\S]*[\\uD800-\\uDBFF](?![\\uDC00-\\uDFFF]))(?![\\s\\S]*(?:^|[^\\uD800-\\uDBFF])[\\uDC00-\\uDFFF])(?!/)(?![A-Za-z]:)(?![.][gG][iI][tT](?:/|$))(?!(?:[^/]+/)*[^/]*[.][.][^/]*$)(?!(?:[^/]+/)*(?:[rR][eE][sS][uU][lL][tT][.][jJ][sS][oO][nN]|[rR][eE][lL][eE][aA][sS][eE]-[bB][oO][dD][yY][.][mM][dD])$)(?:(?![.]{1,2}/)[^/\\\\\\u0000-\\u001f\\u007f-\\u009f]+/)*[A-Za-z0-9_-](?:[A-Za-z0-9._-]{0,253}[A-Za-z0-9_-])?$"
+          },
+          "description": "Ordered exact workspace-relative file paths attached to each passing or failing submission Release after grading. Empty/absent disables the feature. Paths must not contain unpaired Unicode surrogates and are flattened to unique Release-safe basenames; writers and runtimes additionally enforce basename uniqueness and an aggregate maximum of 8,192 raw UTF-8 bytes across configured path strings."
+        },
+        "pass_threshold": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Opt-in, advisory passing bar: the integer percentage of max score (0–100) at/above which a gradebook client (e.g., the GUI) shows a submission as passing, plus passing/failing rollups, badges, and filters. ABSENT means the feature is OFF — no passing concept — which is distinct from a 0% threshold; clients must not treat absent as a default. CLI-unenforced like max_group_size: the autograder and score collection never read it; it changes no student's actual score. Written only when a teacher enables it."
+        },
+        "grading": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode"],
+          "properties": {
+            "mode": {
+              "enum": ["off", "auto", "manual"],
+              "description": "How the teacher intends this assignment to be graded, as a first-class choice the GUI surfaces. `auto` = autograded (the default meaning; ABSENT reads as `auto` so existing files are unchanged). `manual` = the teacher records scores by hand on the submissions page. `off` = not graded. ORTHOGONAL to the autograding tri-state (empty_repo/no_autograder/init_shim) and to collection: this field records intent only and is NOT read by collect_scores.py/regrade_repos.py (which key off the tri-state), so the two never need to agree and must not be coupled by a conditional here. A manual (or overridden) score is stored in scores.json as an ordinary entry with `override: true` — there is no separate manual scores shape."
+            },
+            "max_points": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Total points available for a MANUAL assignment. Required when mode is `manual`; forbidden otherwise. Minimum 1 (not 0) because a gradebook client divides score by max to show passing/failing and to tally stats — a 0 max is the 'ungraded' sentinel, so it must not be a legal configured max."
+            }
+          }
+        },
+        "migrated_from": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source", "classroom_id", "assignment_id", "migrated_at"],
+          "properties": {
+            "source": { "type": "string" },
+            "classroom_id": { "type": "integer" },
+            "assignment_id": { "type": "integer" },
+            "original_slug": { "type": "string" },
+            "starter_repo": { "type": "string" },
+            "invite_link": { "type": "string" },
+            "migrated_at": { "type": "string" }
+          }
+        },
+        "renamed_from": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{1,99}$",
+          "description": "The assignment's PREVIOUS slug, recorded by the one-shot slug rename (offered only to remediate a composed repo-name over GitHub's 100-character limit; a renamed assignment can never be renamed again, so this is always a single slug, never a chain). Two contracts hang off it: (1) score collection accepts a historical result.json whose immutable `assignment` field carries this value (pre-rename submit/* releases keep their grades); (2) the value is RESERVED within the classroom — no new assignment may take it, because creating a repo at a renamed student repo's old name would permanently sever GitHub's automatic redirects for every student clone. Absent on assignments that were never renamed."
+        },
+        "student_permission": {
+          "enum": ["pull", "triage", "push", "maintain", "admin"],
+          "description": "The collaborator role the enrolled student is granted on their OWN assignment repo at accept time (the old GitHub Classroom \"grant students admin access\" checkbox, generalized to GitHub's full ladder). ABSENT means the built-in default: `push` for `individual`, `admin` for legacy `group`, and `push` for `team` (access flows through the GitHub Team attachment, so no student needs repo admin). This is accept-time provisioning only — it governs what NEW accepters get; it does not retroactively change repos already accepted (teachers adjust those with the gradebook's per-repo/bulk access controls). Group coherence: a LEGACY group founder must hold at least `admin` to add teammates via `gh student invite`, so for `mode: group` any configured value below `admin` is clamped up to `admin` by every accept client — prefer omitting it (or writing `admin`) for group assignments. Team mode never clamps: the founding accepter's transient creator-admin is dropped to this role once the team is attached. Caution: `admin` lets the student manage the repo's settings and collaborators; changing repo visibility stays blocked by the org-level lockdown setup applies (members_can_change_repo_visibility=false) while that lockdown is intact (verify with the audit)."
+        },
+        "repo_visibility": {
+          "enum": ["private", "public"],
+          "description": "The visibility each student/team repo is CREATED with at accept time. ABSENT or \"private\" (the default): repos are private, exactly today's behavior. \"public\": accept clients create the repo public — for peer-review, portfolio, or showcase assignments — and both accept surfaces tell the student upfront that their work will be publicly visible. ACCEPT-TIME ONLY and NOT immutable (like include_all_branches, not like empty_repo): it governs what NEW student repos get; changing it later affects only repos created from then on — already-accepted repos are never touched (teachers flip those with the gradebook's per-repo/bulk visibility actions). BEST-EFFORT/FAIL-PRIVATE: the repo is created with the STUDENT'S OWN token, and org policy may forbid members from creating public repos (members_allowed_repository_creation_type), so on a rejected public create the accept clients retry the create as PRIVATE and tell the student the teacher can make it public later — accept never fails on visibility alone. On the wire it is collapsed like submission_mode: writers omit \"private\" (the CLI normalizes it away), so readers must treat an absent field as \"private\"; accept an explicit \"private\" too. Caution for writers: flipping an existing assignment to \"public\" means every FUTURE accepter's work (names, emails, commit history) is publicly visible from the moment their repo is created — surface a confirmation warning."
+        },
+        "submission_mode": {
+          "enum": ["every-push", "tag"],
+          "description": "What counts as a submission for this assignment — the definition consumed by both the submissions page (detection/counting) and the autograder (when a shim exists). ABSENT or \"every-push\" (the default): every default-branch COMMIT past the baseline counts as a submission, except the two commits authored by the tool (the empty commit that opens the Feedback PR at accept time and the submission-mode shim retrofit; both carry `[skip ci]` and no shim ever grades them), and (with a shim) the shim triggers on every default-branch push AND on submit/* tag pushes (the runner mints the submit/<UTC-timestamp>-<short-sha> tag itself on branch pushes). \"tag\": only submit/* and milestone tag pushes count as submissions, and (with a shim) the shim triggers ONLY on them — `gh student submit` pushes the tag after the branch commit (a hand-pushed submit/* tag works too), so a plain `git push` does not count or grade (the primary Actions-cost lever for large cohorts). When a default-autograder shim exists it is applied at ACCEPT TIME; changing it later requires retrofitting each existing student repo's shim (`gh teacher assignment submission-mode` or the gradebook bulk action) and students must re-pull afterward. Teacher-authored (non-default) shims are never rewritten, though the field still governs client tag-pushing. For empty_repo / no_autograder assignments there is no shim to trigger, so the value is purely the submissions-page detection definition — the student's own submissions view counts default-branch commits or reads git tags accordingly (the teacher submissions page suppresses live detection for these shapes, so it renders the collected snapshot instead). On the wire it is collapsed like feedback_pr: writers omit \"every-push\" (the CLI normalizes it away), so readers must treat an absent field as \"every-push\"; accept an explicit \"every-push\" too (some writers have emitted it, so both wire forms occur and must read identically). No reader may gate behavior on the field being PRESENT: absence is the wire default, never a legacy, unmigrated, or version marker. See submission_tags for teacher-named milestone tags; additive room remains for future tags-ignore/branch-pattern fields."
+        },
+        "submission_tags": {
+          "type": "array",
+          "maxItems": 20,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._/*?+\\[\\]-]+$"
+          },
+          "description": "Teacher-named milestone tag patterns that define submissions — e.g. [\"phase1\", \"phase2\", \"complete\"], or globs like \"v*\". The submissions page uses them to identify and group submissions from a student's git tags (a glob groups its matches as one milestone set); when a default-autograder shim exists they ALSO trigger grading, so a student pushing a matching tag (`git tag phase1 && git push origin phase1`) gets that commit graded. TRIGGERS and detection, not records: the runner still mints/reuses the canonical submit/<UTC-timestamp>-<short-sha> tag at the triggering commit and publishes the Release there (immutable one-release-per-submission history; the Release title notes the triggering tag), so collection, regrade, download, and web grade reads are unaffected. The canonical submit/* namespace ALWAYS counts too — when a shim is generated its trigger is the union of these patterns and submit/*, and the field is orthogonal to submission_mode (an every-push assignment can also name milestone tags; tag mode drops only the branch trigger). Patterns are the supported subset of GitHub Actions tag filters (literal, `*` not crossing `/`, `**` crossing, `?`, `+`, `[...]`; NO `!` excludes — rejected by writers) rendered verbatim into any generated shim's on.push.tags, hence the restricted charset (no quotes/whitespace — the values are spliced into a quoted-YAML line). One rule this schema's items.pattern cannot express (it must stay Go-RE2-compilable): validators also reject a LEADING `?`/`+` and a `+` stacked on another quantifier (e.g. `v*+`) — those compile as possessive quantifiers in Python but are errors in Go/JS, so every matcher fails closed on them; clients must apply the same rule (Go ValidateSubmissionTags / web validateSubmissionTags). When a default-autograder shim exists the trigger is baked into each repo's shim at ACCEPT TIME; changing patterns later requires the same shim retrofit, and students must re-pull. For empty_repo / no_autograder assignments there is no shim, so the patterns are purely the submissions-page detection definition. Empty/absent means no milestone tags (exactly today's behavior). Caution: a broad glob like \"v*\" matches every release tag a student pushes."
+        },
+        "repo_features": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "issues": { "type": "boolean" },
+            "wiki": { "type": "boolean" },
+            "projects": { "type": "boolean" },
+            "pull_requests": { "type": "boolean" }
+          },
+          "description": "Per-assignment repository feature overrides applied to each student repo at ACCEPT TIME, on FRESH CREATE only. Each key (issues/wiki/projects/pull_requests) is tri-state: ABSENT = inherit the TEMPLATE's current setting — accept reads the template repo's has_issues/has_wiki/has_projects/has_pull_requests and re-applies them to the student repo, because GitHub's `POST /generate` does NOT copy the template's feature settings (a generated repo otherwise gets GitHub defaults). For a template-less/empty_repo assignment absent is left at GitHub's own create default (no PATCH key is sent — the \"Default\" choice does not override the feature). `true` = force the feature on, `false` = force it off (an explicit value always wins over the template). Applied via `PATCH /repos/{org}/{repo}`, best-effort/fail-open (a rejection, e.g. org-disabled projects, is logged and does not fail accept). NOT retrofitted to already-accepted repos and NOT re-asserted on re-accept (a student's own later toggle survives); reconcile existing repos with the gradebook bulk action instead. Trust boundary: inheriting a PRIVATE template copies its Issues/Projects/Wiki CONTENT (e.g. a wiki that may hold solutions) into every student repo, so a template used for inherit should not carry cohort-sensitive content. The object is omitted entirely when no key is set."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "mode": { "const": "individual" } } },
+          "then": {
+            "allOf": [
+              { "not": { "required": ["max_group_size"] } },
+              { "not": { "required": ["team_formation"] } }
+            ]
+          }
+        },
+        {
+          "if": { "properties": { "mode": { "const": "group" } } },
+          "then": {
+            "allOf": [
+              { "required": ["max_group_size"] },
+              { "not": { "required": ["team_formation"] } }
+            ]
+          }
+        },
+        {
+          "if": { "properties": { "mode": { "const": "team" } } },
+          "then": { "required": ["max_group_size", "team_formation"] }
+        },
+        {
+          "if": { "properties": { "empty_repo": { "const": true } }, "required": ["empty_repo"] },
+          "then": {
+            "allOf": [
+              { "not": { "required": ["template"] } },
+              { "not": { "required": ["tests"] } },
+              { "not": { "required": ["allowed_files"] } },
+              { "not": { "required": ["release_assets"] } },
+              { "not": { "required": ["pass_threshold"] } },
+              { "properties": { "feedback_pr": { "const": false } } }
+            ]
+          }
+        },
+        {
+          "if": { "properties": { "no_autograder": { "const": true } }, "required": ["no_autograder"] },
+          "then": {
+            "allOf": [
+              { "required": ["template"] },
+              { "not": { "required": ["tests"] } },
+              { "not": { "required": ["allowed_files"] } },
+              { "not": { "required": ["release_assets"] } },
+              { "not": { "required": ["pass_threshold"] } },
+              { "not": { "properties": { "empty_repo": { "const": true } }, "required": ["empty_repo"] } },
+              { "properties": { "autograder": { "const": "default" } } }
+            ]
+          }
+        },
+        {
+          "if": { "properties": { "init_shim": { "const": true } }, "required": ["init_shim"] },
+          "then": {
+            "allOf": [
+              { "not": { "required": ["template"] } },
+              { "not": { "properties": { "empty_repo": { "const": true } }, "required": ["empty_repo"] } },
+              { "not": { "properties": { "no_autograder": { "const": true } }, "required": ["no_autograder"] } },
+              { "properties": { "autograder": { "const": "default" } } }
+            ]
+          }
+        },
+        {
+          "if": { "properties": { "include_all_branches": { "const": true } }, "required": ["include_all_branches"] },
+          "then": {
+            "allOf": [
+              { "required": ["template"] },
+              { "not": { "properties": { "empty_repo": { "const": true } }, "required": ["empty_repo"] } },
+              { "not": { "properties": { "init_shim": { "const": true } }, "required": ["init_shim"] } }
+            ]
+          }
+        },
+        {
+          "if": { "properties": { "copy_about": { "const": true } }, "required": ["copy_about"] },
+          "then": { "required": ["template"] }
+        },
+        {
+          "if": { "properties": { "copy_topics": { "const": true } }, "required": ["copy_topics"] },
+          "then": { "required": ["template"] }
+        },
+        {
+          "if": { "properties": { "feedback_pr_template": { "const": true } }, "required": ["feedback_pr_template"] },
+          "then": {
+            "allOf": [
+              { "required": ["template"] },
+              { "properties": { "feedback_pr": { "const": true } }, "required": ["feedback_pr"] }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": { "grading": { "properties": { "mode": { "const": "manual" } }, "required": ["mode"] } },
+            "required": ["grading"]
+          },
+          "then": { "properties": { "grading": { "required": ["max_points"] } } },
+          "else": { "properties": { "grading": { "not": { "required": ["max_points"] } } } }
+        }
+      ]
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Omit entirely for the defaults (ubuntu-latest + Python 3.14). Never write empty-string fields. CLOSED CONTRACT: additionalProperties is false and every reader decodes runtime strictly (the CLI's RuntimeRef has no Extra / DisallowUnknownFields; the web rebuilds runtime from the known sub-keys and drops any unknown one on a read-modify-write edit). An unknown sub-key makes the whole file unparseable, so — unlike top-level entry keys, which evolve additively and preserve unknowns — a NEW runtime sub-key must ship in lockstep across this schema, the Go RuntimeRef, and the web Assignment['runtime'] type in the same release; otherwise an older reader silently strips it on edit.",
+      "properties": {
+        "runs-on": {
+          "description": "GitHub Actions runner selection, mirroring Actions' own `runs-on`: a single label string (\"ubuntu-latest\") or an array of labels ([\"self-hosted\", \"gpu\"]) for custom / self-hosted runners. No value allow-list — a teacher customizing runs-on owns getting the label right; each label is only anti-injection-checked (1-10 labels). Omit for the default (ubuntu-latest).",
+          "oneOf": [
+            { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" },
+            {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 10,
+              "items": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" }
+            }
+          ]
+        },
+        "container": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["image"],
+          "properties": {
+            "image": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}$"
+            },
+            "user": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.-]{0,31}(:[A-Za-z0-9_][A-Za-z0-9_.-]{0,31})?$"
+            }
+          }
+        },
+        "python": { "$ref": "#/$defs/langVersion" },
+        "node": { "$ref": "#/$defs/langVersion" },
+        "java": { "$ref": "#/$defs/langVersion" },
+        "go": { "$ref": "#/$defs/langVersion" },
+        "rust": { "$ref": "#/$defs/langVersion" },
+        "apt": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9.+-]{0,63}$" }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["container"] },
+          "then": { "not": { "required": ["apt"] } }
+        }
+      ]
+    },
+    "langVersion": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._+-]{1,32}$"
+    },
+    "test": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type", "run"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[^\\u0000-\\u001f\\u007f]+$",
+          "description": "Unique within the assignment (enforce client-side); <= 100 UTF-8 bytes; no control characters."
+        },
+        "type": { "enum": ["io", "run", "python"] },
+        "setup": { "type": "string" },
+        "run": { "type": "string", "minLength": 1 },
+        "input": { "type": "string" },
+        "input-file": { "type": "string" },
+        "expected": { "type": "string" },
+        "expected-file": { "type": "string" },
+        "comparison": { "enum": ["included", "exact", "regex"] },
+        "timeout": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 600,
+          "description": "Seconds, 1-600. 0 (or omitted) means the default of 10s."
+        },
+        "exit-code": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "points": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000,
+          "description": "Defaults to 0 (informational test) when omitted; the CLI always writes it."
+        },
+        "failure-details": {
+          "enum": ["full", "actual-only", "none"],
+          "description": "How much failure detail students see for this test (release body, Actions log, run summary). `full` (the default when absent) = unified diff for exact comparisons, otherwise expected+actual blocks, plus stderr. `actual-only` = the student's own stdout/stderr only — no expected output and no diff (a diff would reveal it). `none` = only the failure kind (wrong output, wrong exit code, timeout, setup failed). Overrides the assignment's `test_defaults`."
+        },
+        "show-output": {
+          "type": "boolean",
+          "description": "Include the captured stdout/stderr of this test's setup/run commands in the submission report and Actions log even when the test PASSES, inside a collapsed details block. Overrides the assignment's `test_defaults`. On the wire it is collapsed: writers omit the field when false, so readers must treat an absent field as `false` (passing output discarded)."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "io" } } },
+          "then": {
+            "required": ["comparison"],
+            "not": { "required": ["exit-code"] }
+          },
+          "else": {
+            "allOf": [
+              { "not": { "required": ["input"] } },
+              { "not": { "required": ["input-file"] } },
+              { "not": { "required": ["expected"] } },
+              { "not": { "required": ["expected-file"] } },
+              { "not": { "required": ["comparison"] } }
+            ]
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "python" } } },
+          "then": { "not": { "required": ["exit-code"] } }
+        },
+        { "not": { "required": ["input", "input-file"] } },
+        { "not": { "required": ["expected", "expected-file"] } },
+        {
+          "if": {
+            "properties": {
+              "type": { "const": "io" },
+              "comparison": { "enum": ["included", "regex"] }
+            }
+          },
+          "then": {
+            "anyOf": [
+              { "required": ["expected"], "properties": { "expected": { "minLength": 1 } } },
+              { "required": ["expected-file"], "properties": { "expected-file": { "minLength": 1 } } }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}
