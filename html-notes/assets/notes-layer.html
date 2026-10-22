@@ -1,0 +1,288 @@
+<!-- Personal notes layer (html-notes skill). Notes live in __NOTES_FILE__ next to this file.
+     Each note is attached to a block (paragraph, equation, figure, ...) by a fingerprint of its text,
+     so notes survive edits elsewhere in the page. A note whose block was edited follows it (matched by
+     word overlap and by its old neighbours); a note whose block was deleted is listed as "unattached".
+     Sync: in Chrome the page writes every change to the notes file at once (File System Access API, after a
+     one-time "choose folder" step), and re-reads the file when the tab regains focus; changes from two places
+     are merged by note id. Other browsers show the notes read-only. Re-run add_notes.py to update this block. -->
+<style>
+.wmn-banner,.wmn-card,.wmn-bar,.wmn-panel,.wmn-add{--wmn-accent:#C9932B;--wmn-soft:#F1E4C4;--wmn-paper:#FFF8E1;--wmn-ink:#1C2B33;--wmn-ink2:#4A5A63;--wmn-rule:#C9D3D6;--wmn-loss:#A63D40;--wmn-sans:"Avenir Next","Avenir","Helvetica Neue",Helvetica,Arial,sans-serif;color:var(--wmn-ink)}
+.wmn-banner{font-family:var(--wmn-sans);font-size:.85rem;background:var(--wmn-soft);border-bottom:1px solid var(--wmn-accent);padding:6px 16px;text-align:center}
+.wmn-btn{font-family:var(--wmn-sans);font-size:.75rem;line-height:1.4;background:var(--wmn-ink);color:#fff;border:1px solid var(--wmn-ink);border-radius:0;padding:2px 8px;margin:0;cursor:pointer}
+.wmn-btn.alt{background:#fff;color:var(--wmn-ink)}
+.wmn-add{position:absolute;z-index:50;display:none;width:22px;height:22px;padding:0;border:0;border-radius:50%;background:var(--wmn-accent);color:#fff;font:600 16px/22px var(--wmn-sans);text-align:center;opacity:.85;cursor:pointer}
+.wmn-add:hover{opacity:1}
+.wmn-card{font-family:var(--wmn-sans);font-size:.9rem;line-height:1.45;text-align:left;background:var(--wmn-paper);border:1px solid var(--wmn-accent);border-left:4px solid var(--wmn-accent);padding:8px 12px;margin:-6px 0 18px;list-style:none}
+.wmn-text{white-space:pre-wrap}
+.wmn-meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:.75rem;color:var(--wmn-ink2);margin-top:6px}
+.wmn-card textarea{box-sizing:border-box;width:100%;min-height:90px;font:inherit;border:1px solid var(--wmn-rule);padding:6px}
+.wmn-bar{position:fixed;right:12px;bottom:12px;z-index:60;display:flex;flex-wrap:wrap;gap:8px;align-items:center;max-width:calc(100vw - 24px);font-family:var(--wmn-sans);font-size:.8rem;background:#fff;border:1px solid var(--wmn-rule);box-shadow:0 2px 8px rgba(0,0,0,.12);padding:6px 10px}
+.wmn-dirty{color:var(--wmn-loss);font-weight:600}
+.wmn-sync{font-family:var(--wmn-sans);font-size:.75rem;border:0;background:none;padding:2px 4px;cursor:default;color:var(--wmn-ink2)}
+.wmn-sync.warn{color:var(--wmn-loss);font-weight:600;cursor:pointer;text-decoration:underline}
+.wmn-dialog{position:fixed;left:50%;top:30%;transform:translate(-50%,-30%);z-index:70;box-sizing:border-box;width:min(460px,calc(100vw - 24px));font-family:var(--wmn-sans);font-size:.9rem;line-height:1.45;color:var(--wmn-ink);background:#fff;border:1px solid var(--wmn-accent);border-left:4px solid var(--wmn-accent);box-shadow:0 4px 16px rgba(0,0,0,.18);padding:14px 16px}
+.wmn-dialog p{margin:0 0 10px}
+.wmn-panel{position:fixed;right:12px;bottom:56px;z-index:60;display:none;box-sizing:border-box;width:min(440px,calc(100vw - 24px));max-height:60vh;overflow:auto;background:#fff;border:1px solid var(--wmn-rule);box-shadow:0 2px 8px rgba(0,0,0,.12);padding:10px}
+.wmn-panel .wmn-card{margin:0 0 10px}
+.wmn-old{font-size:.75rem;color:var(--wmn-ink2);margin-bottom:4px}
+body.wmn-hide .wmn-card:not(.wmn-panel .wmn-card){display:none}
+.wmn-target{outline:2px dashed #C9932B;outline-offset:2px}
+@media print{.wmn-banner,.wmn-add,.wmn-bar,.wmn-panel,.wmn-dialog{display:none!important}}
+</style>
+<script>
+(function(){
+'use strict';
+const FILE='__NOTES_FILE__', HTML='__HTML_FILE__';
+const KEY=location.pathname, DIRKEY='dir:'+KEY.replace(/[^/]*$/,''), LS='wmn-pending:'+KEY, LSHIDE='wmn-hide:'+KEY;
+const BLOCKS='p,li,dt,dd,h1,h2,h3,h4,h5,h6,.eq,figure,table,pre,blockquote,.note,.diffnote,.widget';
+const OURS='.wmn-card,.wmn-bar,.wmn-panel,.wmn-banner,.wmn-add';
+const canSave=!!window.showDirectoryPicker;
+const DELIMS=[{left:'$$',right:'$$',display:true},{left:'\\[',right:'\\]',display:true},{left:'\\(',right:'\\)',display:false},{left:'$',right:'$',display:false}];
+let data=(window.NOTES&&Array.isArray(window.NOTES.notes))?window.NOTES:{version:1,updated:'',notes:[]};
+let dirty=false, dirH=null, fileH=null, diskStamp=null, busy=false, again=false, picking=null, target=null, ROOT=null;
+const where=new Map();      // note id -> block element
+const index=new Map();      // tag|fingerprint -> [blocks, in document order]
+const now=()=>new Date().toISOString();
+const el=(tag,cls,txt)=>{const e=document.createElement(tag); if(cls) e.className=cls; if(txt!=null) e.textContent=txt; return e;};
+const btn=(txt,fn,alt)=>{const b=el('button','wmn-btn'+(alt?' alt':''),txt); b.type='button'; b.onclick=fn; return b;};
+const lsGet=k=>{try{return localStorage.getItem(k);}catch(e){return null;}};
+const lsSet=(k,v)=>{try{ v==null?localStorage.removeItem(k):localStorage.setItem(k,v); }catch(e){}};
+
+/* ---- block identity: text with KaTeX math reduced to its TeX source, so it is the same before and after rendering ---- */
+function textOf(b){
+  const c=b.cloneNode(true);
+  c.querySelectorAll(OURS+',svg,canvas,output,script,style,mjx-container,.MathJax').forEach(e=>e.remove());
+  c.querySelectorAll('.katex').forEach(k=>{const a=k.querySelector('annotation'); k.replaceWith(a?a.textContent:'');});
+  return c.textContent;
+}
+const fp=b=>textOf(b).replace(/[\s$]+/g,'').slice(0,120);
+const snip=(b,n)=>b?textOf(b).replace(/\s+/g,' ').trim().slice(0,n):'';
+
+/* ---- fuzzy identity, for blocks whose text was edited: word overlap (Dice) of the block and of its two neighbours ---- */
+const STOP=new Set('the and that this with for are was were from into its not but has have can which when what each one two than then they their there these those also only more most such use used uses will would does did been being any all how why who our you your about over under between per via both other some same very just'.split(' '));
+function toks(s){ const m=new Map(); for(const w of (s||'').toLowerCase().match(/[a-z0-9]+/g)||[]) if((w.length>2||/^\d+$/.test(w))&&!STOP.has(w)) m.set(w,(m.get(w)||0)+1); return m; }
+function dice(a,b){ let n=0,d=0; for(const [w,c] of a){ d+=c; if(b.has(w)) n+=Math.min(c,b.get(w)); } for(const c of b.values()) d+=c; return d?2*n/d:0; }
+let LIST=[];                // all blocks in document order
+const TOK=new Map(), tk=b=>TOK.get(b)||TOK.set(b,toks(textOf(b))).get(b);
+function context(n,b){ const i=LIST.indexOf(b); n.txt=snip(b,2000); n.prev=i>0?snip(LIST[i-1],600):''; n.next=i>=0?snip(LIST[i+1],600):''; }
+function best(t,from,to,min){ let j0=-1; for(let j=from;j<to;j++){ const v=dice(t,tk(LIST[j])); if(v>=min){ min=v; j0=j; } } return j0; }
+/* An edited paragraph still sits between its old neighbours: take the most similar block between them.
+   If the neighbours are now adjacent, the paragraph was deleted. If the neighbours changed too, use similarity alone. */
+function follow(n){
+  if(!n.txt) return null;
+  const t=toks(n.txt), pj=n.prev?best(toks(n.prev),0,LIST.length,.6):-1, nj=n.next?best(toks(n.next),0,LIST.length,.6):-1;
+  if(pj>=0&&nj>pj&&nj-pj<=6){ const j=best(t,pj+1,nj,.15); return j>=0?LIST[j]:null; }
+  const j=best(t,0,LIST.length,.5); return j>=0?LIST[j]:null;
+}
+const keyOf=b=>b.tagName+'|'+fp(b);
+function anchorOf(b){
+  let id='';
+  for(const e of ROOT.querySelectorAll('[id]')){
+    if(e.closest('svg')||e.matches('canvas,input,output,select,textarea')) continue;
+    if(e===b||(e.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING)) id=e.id; else break;
+  }
+  return id;
+}
+const blockAt=t=>{const b=t&&t.closest&&t.closest(BLOCKS); return b&&ROOT.contains(b)&&!b.closest(OURS)?b:null;};
+const listFor=b=>{const k=keyOf(b), l=index.get(k)||index.set(k,[]).get(k); if(!l.includes(b)) l.push(b); return l;};
+
+/* ---- rendering ---- */
+function after(b,c){ let r=b; while(r.nextElementSibling&&r.nextElementSibling.classList.contains('wmn-card')) r=r.nextElementSibling; r.after(c); }
+function math(e){
+  if(window.renderMathInElement) renderMathInElement(e,{delimiters:DELIMS,throwOnError:false});
+  else if(window.MathJax&&MathJax.typesetPromise) MathJax.typesetPromise([e]).catch(()=>{});
+}
+function card(n){
+  const c=el('div','wmn-card'); c.dataset.id=n.id;
+  const t=el('div','wmn-text',n.text), m=el('div','wmn-meta');
+  m.append(el('span','',(n.updated||'').slice(0,16).replace('T',' ')));
+  if(canSave) m.append(btn('Edit',()=>edit(n,c,false),true),btn('Delete',()=>del(n),true));
+  c.append(t,m); math(t); return c;
+}
+function edit(n,c,isNew){
+  const ta=el('textarea'); ta.value=n.text; ta.placeholder='Your note. $math$ works. Ctrl/Cmd+Enter saves, Esc cancels.';
+  const ok=btn('Save note',()=>{
+    const t=ta.value.trim();
+    if(!t){ if(isNew) c.remove(); else del(n,true); return; }
+    n.text=t; n.updated=now(); if(isNew) data.notes.push(n);
+    c.replaceWith(card(n)); changed();
+  });
+  const no=btn('Cancel',()=>{ if(isNew) c.remove(); else c.replaceWith(card(n)); },true);
+  const m=el('div','wmn-meta'); m.append(ok,no);
+  ta.addEventListener('keydown',e=>{ if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)) ok.click(); if(e.key==='Escape') no.click(); });
+  c.replaceChildren(ta,m); ta.focus();
+}
+function del(n,quiet){
+  if(!quiet&&!confirm('Delete this note?')) return;
+  data.notes=data.notes.filter(x=>x!==n); where.delete(n.id); (data.deleted=data.deleted||[]).push(n.id);
+  document.querySelectorAll('.wmn-card[data-id="'+n.id+'"]').forEach(c=>c.remove());
+  changed(); panel();
+}
+function place(){
+  LIST=[...ROOT.querySelectorAll(BLOCKS)].filter(b=>!b.closest(OURS));
+  LIST.forEach(listFor);
+  let moved=0;
+  for(const n of data.notes){
+    const list=index.get(n.tag+'|'+n.fp)||[];
+    let b=list.length>1?(list.filter(x=>anchorOf(x)===n.anchor)[0]||list[Math.min(n.k||0,list.length-1)]):list[0];
+    if(b){ if(!n.txt) context(n,b); }          // older notes: record the text so they can follow later edits
+    else if((b=follow(n))){ moved++; Object.assign(n,{tag:b.tagName,fp:fp(b),anchor:anchorOf(b),k:listFor(b).indexOf(b)}); context(n,b); }
+    if(b){ where.set(n.id,b); after(b,card(n)); }
+  }
+  return moved;
+}
+const orphans=()=>data.notes.filter(n=>!where.has(n.id));
+
+/* ---- toolbar and unattached-notes panel ---- */
+const bar=el('div','wmn-bar'), info=el('span'), status=el('span'), pnl=el('div','wmn-panel');
+const hideBtn=btn('',()=>{ document.body.classList.toggle('wmn-hide'); lsSet(LSHIDE,document.body.classList.contains('wmn-hide')?'1':null); bar_(); },true);
+const orphBtn=btn('',()=>{ pnl.style.display=pnl.style.display==='block'?'none':'block'; panel(); },true);
+const syncBtn=el('button','wmn-sync'); syncBtn.type='button'; let syncFix=null; syncBtn.onclick=()=>{ if(syncFix) syncFix(); };
+function bar_(){
+  const o=orphans().length;
+  info.textContent='Notes: '+data.notes.length;
+  hideBtn.textContent=document.body.classList.contains('wmn-hide')?'Show':'Hide';
+  orphBtn.textContent=o+' unattached'; orphBtn.style.display=o?'':'none';
+}
+/* The sync indicator. A warning says what is wrong and what a click on it will do. */
+function show(state,msg){
+  const S={
+    synced:['✓ Synced',''], saving:['Saving…',''], readonly:['Read-only here: edit notes in Chrome',''],
+    connect:['⚠ Not synced: click to choose the folder of this page','Your notes are kept in this browser until Chrome may write '+FILE+'. Choose the folder that contains '+HTML+'; Chrome remembers it.'],
+    wrongdir:['⚠ That folder does not contain '+HTML+': click to choose again',''],
+    allow:['⚠ Not synced: click to let Chrome write the notes file','Chrome asks again after a restart unless you choose "Allow on every visit". Your notes are kept in this browser until then.'],
+    error:['⚠ Not synced: '+(msg||'')+'. Click to try again','Your notes are kept in this browser until the file is written.']};
+  const [t,tip]=S[state]; syncBtn.textContent=t; syncBtn.title=tip; syncBtn.classList.toggle('warn',t[0]==='⚠');
+  syncFix=state==='connect'||state==='wrongdir'?()=>sync('pick'):state==='allow'||state==='error'?()=>sync('edit'):null;
+}
+function panel(){
+  if(pnl.style.display!=='block') return bar_();
+  pnl.replaceChildren(el('div','wmn-old','Notes whose paragraph changed or disappeared. Reattach one by clicking a block of the page.'));
+  for(const n of orphans()){
+    const c=card(n); c.prepend(el('div','wmn-old','was near #'+(n.anchor||'?')+': '+n.fp.slice(0,60)+'…'));
+    if(canSave) c.querySelector('.wmn-meta').append(btn('Reattach',()=>{ picking=n; pnl.style.display='none'; status.className=''; status.textContent='Click the block to attach the note to (Esc cancels)'; },true));
+    pnl.append(c);
+  }
+  if(!orphans().length) pnl.style.display='none';
+  bar_();
+}
+
+/* ---- sync: the notes file on disk and the page are kept equal ----
+   IndexedDB keeps a folder handle shared by every page in the folder (or a file handle saved by an
+   older version of this layer). Changes not yet on disk are also kept in localStorage. */
+function idb(mode,key,val){
+  return new Promise(res=>{ try{
+    const r=indexedDB.open('wmn',1);
+    r.onupgradeneeded=()=>r.result.createObjectStore('h');
+    r.onsuccess=()=>{ try{ const tx=r.result.transaction('h',mode?'readwrite':'readonly'), s=tx.objectStore('h');
+      const q=mode?s.put(val,key):s.get(key); q.onsuccess=()=>res(q.result); q.onerror=()=>res(null); }catch(e){ res(null); } };
+    r.onerror=()=>res(null);
+  }catch(e){ res(null); } });
+}
+function changed(){ data.updated=now(); dirty=true; lsSet(LS,JSON.stringify(data)); bar_(); sync('edit'); }
+function merge(a,b){
+  const gone=new Set([...(a.deleted||[]),...(b.deleted||[])]), m=new Map();
+  for(const n of [...a.notes,...b.notes]){ if(gone.has(n.id)) continue; const o=m.get(n.id); if(!o||(n.updated||'')>(o.updated||'')) m.set(n.id,n); }
+  return {version:1,updated:(a.updated||'')>(b.updated||'')?a.updated:b.updated,deleted:[...gone],
+          notes:[...m.values()].sort((x,y)=>(x.created||'')<(y.created||'')?-1:1)};
+}
+function rerender(){
+  if(ROOT.querySelector('.wmn-card textarea')) return;          // never pull a note away while it is being edited
+  ROOT.querySelectorAll('.wmn-card').forEach(c=>c.remove()); where.clear();
+  if(place()){ data.updated=now(); dirty=true; }
+  panel();
+}
+async function readDisk(){
+  const t=await (await fileH.getFile()).text(), i=t.indexOf('{'), j=t.lastIndexOf('}');
+  if(i<0) return null; const d=JSON.parse(t.slice(i,j+1)); return Array.isArray(d.notes)?d:null;
+}
+async function writeDisk(){
+  const w=await fileH.createWritable();
+  await w.write('// Personal notes for '+HTML+'. Written by the page; edit with care.\nwindow.NOTES = '+JSON.stringify(data,null,1)+';\n');
+  await w.close();
+}
+/* mode: 'auto' (no click: may only read and write), 'edit' (after a click: may ask for permission),
+   'pick' (a click on the indicator or dialog: may also open the folder picker) */
+async function sync(mode){
+  if(!canSave) return show('readonly');
+  if(busy){ again=true; return; } busy=true;
+  try{
+    if(!fileH&&!dirH){ const h=await idb(false,DIRKEY)||await idb(false,KEY); if(h&&h.kind==='directory') dirH=h; else if(h) fileH=h; }
+    if(!fileH&&!dirH){
+      if(mode==='pick') dirH=await showDirectoryPicker({id:'wmn',mode:'readwrite'});
+      else { show(dirty?'connect':'synced'); if(dirty&&mode==='edit') ask(); return; }
+    }
+    const ph=dirH||fileH;
+    if(await ph.queryPermission({mode:'readwrite'})!=='granted'){
+      if(mode==='auto'||await ph.requestPermission({mode:'readwrite'})!=='granted') return show(dirty?'allow':'synced');
+    }
+    if(!fileH){
+      try{ await dirH.getFileHandle(HTML); }catch(e){ dirH=null; return show('wrongdir'); }
+      fileH=await dirH.getFileHandle(FILE,{create:true}); await idb(true,DIRKEY,dirH);
+    }
+    const disk=await readDisk();
+    if(disk&&disk.updated!==diskStamp){                          // changed elsewhere since this page last read or wrote it
+      data=dirty?merge(data,disk):disk;
+      rerender();
+    }
+    if(dirty||!disk||disk.updated!==data.updated){ show('saving'); data.updated=data.updated||now(); await writeDisk(); }
+    diskStamp=data.updated; dirty=false; lsSet(LS,null); show('synced');
+  }catch(e){ show(e.name==='AbortError'?(dirty?'connect':'synced'):'error',e.message); }
+  finally{ busy=false; bar_(); if(again){ again=false; sync('auto'); } }
+}
+function ask(){
+  if(document.querySelector('.wmn-dialog')) return;
+  const d=el('div','wmn-dialog'), row=el('div','wmn-meta');
+  row.append(btn('Choose folder',()=>{ d.remove(); sync('pick'); }),btn('Later',()=>d.remove(),true));
+  d.append(el('p','','Keep these notes in sync with the file '+FILE+'?'),
+           el('p','wmn-old','Chrome needs permission to write in the folder that contains '+HTML+'. Choose that folder in the next window. You do this once per folder. Until then your notes are kept in this browser.'),row);
+  document.body.append(d);
+}
+
+/* ---- start (after MathJax has typeset, if the page uses it; KaTeX auto-render runs before us) ---- */
+function init(){
+  ROOT=document.querySelector('main')||document.body;
+  diskStamp=data.updated||null;                              // what the notes.js <script> read from disk
+  const pending=lsGet(LS);
+  if(pending){ try{ const p=JSON.parse(pending); if((p.updated||'')>(data.updated||'')){ data=merge(p,data); dirty=true; } }catch(e){} }
+  if(lsGet(LSHIDE)) document.body.classList.add('wmn-hide');
+  const moved=place();
+  bar.append(info,orphBtn,hideBtn,syncBtn,status); document.body.append(bar,pnl);
+  if(moved){ data.updated=now(); dirty=true; lsSet(LS,JSON.stringify(data)); }
+  bar_(); sync('auto');
+  window.wmnNotes=()=>data;   // for check_notes.py and debugging
+  if(!canSave) return;
+  const recheck=()=>{ if(document.visibilityState==='visible') sync('auto'); };
+  window.addEventListener('focus',recheck); document.addEventListener('visibilitychange',recheck);
+
+  const add=el('button','wmn-add','+'); add.type='button'; add.title='Add a note below this block'; document.body.append(add);
+  document.addEventListener('mouseover',e=>{
+    if(e.target===add) return;
+    const b=blockAt(e.target); if(!b) return;
+    if(picking){ if(target) target.classList.remove('wmn-target'); b.classList.add('wmn-target'); }
+    target=b; const r=b.getBoundingClientRect();
+    add.style.top=(r.top+scrollY)+'px'; add.style.left=Math.max(4,r.left+scrollX-30)+'px'; add.style.display=picking?'none':'block';
+  });
+  add.onclick=()=>{
+    if(!target) return;
+    const list=listFor(target);
+    const n={id:'n'+Date.now().toString(36),tag:target.tagName,fp:fp(target),anchor:anchorOf(target),k:list.indexOf(target),text:'',created:now(),updated:now()};
+    context(n,target);
+    where.set(n.id,target); const c=el('div','wmn-card'); c.dataset.id=n.id; after(target,c); edit(n,c,true);
+  };
+  document.addEventListener('click',e=>{
+    if(!picking) return; const b=blockAt(e.target); if(!b) return;
+    e.preventDefault(); e.stopPropagation(); b.classList.remove('wmn-target');
+    const n=picking, list=listFor(b);
+    Object.assign(n,{tag:b.tagName,fp:fp(b),anchor:anchorOf(b),k:list.indexOf(b),updated:now()}); context(n,b);
+    picking=null; where.set(n.id,b); after(b,card(n)); changed();
+  },true);
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&picking){ picking=null; if(target) target.classList.remove('wmn-target'); status.textContent=''; bar_(); } });
+}
+function start(){
+  const mj=window.MathJax&&MathJax.startup&&MathJax.startup.promise;
+  (mj?mj.catch(()=>{}):Promise.resolve()).then(init);
+}
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',start); else start();
+})();
+</script>
