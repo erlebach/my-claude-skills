@@ -4,9 +4,11 @@
      word overlap and by its old neighbours); a note whose block was deleted is listed as "unattached".
      Sync: in Chrome the page writes every change to the notes file at once (File System Access API, after a
      one-time "choose folder" step), and re-reads the file when the tab regains focus; changes from two places
-     are merged by note id. Other browsers show the notes read-only. Re-run add_notes.py to update this block. -->
+     are merged by note id. Other browsers show the notes read-only. Re-run add_notes.py to update this block.
+     Highlights: select text, pick a colour or add a note. A highlight is stored with its block like a note, plus
+     its words and the 32 characters on each side, and is drawn with the CSS Custom Highlight API (no DOM change). -->
 <style>
-.wmn-banner,.wmn-card,.wmn-bar,.wmn-panel,.wmn-add{--wmn-accent:#C9932B;--wmn-soft:#F1E4C4;--wmn-paper:#FFF8E1;--wmn-ink:#1C2B33;--wmn-ink2:#4A5A63;--wmn-rule:#C9D3D6;--wmn-loss:#A63D40;--wmn-sans:"Avenir Next","Avenir","Helvetica Neue",Helvetica,Arial,sans-serif;color:var(--wmn-ink)}
+.wmn-banner,.wmn-card,.wmn-bar,.wmn-panel,.wmn-add,.wmn-pop{--wmn-accent:#C9932B;--wmn-soft:#F1E4C4;--wmn-paper:#FFF8E1;--wmn-ink:#1C2B33;--wmn-ink2:#4A5A63;--wmn-rule:#C9D3D6;--wmn-loss:#A63D40;--wmn-sans:"Avenir Next","Avenir","Helvetica Neue",Helvetica,Arial,sans-serif;color:var(--wmn-ink)}
 .wmn-banner{font-family:var(--wmn-sans);font-size:.85rem;background:var(--wmn-soft);border-bottom:1px solid var(--wmn-accent);padding:6px 16px;text-align:center}
 .wmn-btn{font-family:var(--wmn-sans);font-size:.75rem;line-height:1.4;background:var(--wmn-ink);color:#fff;border:1px solid var(--wmn-ink);border-radius:0;padding:2px 8px;margin:0;cursor:pointer}
 .wmn-btn.alt{background:#fff;color:var(--wmn-ink)}
@@ -27,7 +29,11 @@
 .wmn-old{font-size:.75rem;color:var(--wmn-ink2);margin-bottom:4px}
 body.wmn-hide .wmn-card:not(.wmn-panel .wmn-card){display:none}
 .wmn-target{outline:2px dashed #C9932B;outline-offset:2px}
-@media print{.wmn-banner,.wmn-add,.wmn-bar,.wmn-panel,.wmn-dialog{display:none!important}}
+.wmn-pop{position:absolute;z-index:65;display:none;gap:6px;align-items:center;background:#fff;border:1px solid var(--wmn-rule);box-shadow:0 2px 8px rgba(0,0,0,.18);padding:4px 6px}
+.wmn-sw{width:20px;height:20px;padding:0;border:1px solid var(--wmn-ink2);border-radius:50%;cursor:pointer}
+.wmn-sw.on{outline:2px solid var(--wmn-ink);outline-offset:1px}
+.wmn-quote{font-size:.8rem;font-style:italic;color:var(--wmn-ink2);border-left:4px solid;padding-left:8px;margin-bottom:6px}
+@media print{.wmn-banner,.wmn-add,.wmn-bar,.wmn-panel,.wmn-dialog,.wmn-pop{display:none!important}}
 </style>
 <script>
 (function(){
@@ -35,12 +41,15 @@ body.wmn-hide .wmn-card:not(.wmn-panel .wmn-card){display:none}
 const FILE='__NOTES_FILE__', HTML='__HTML_FILE__';
 const KEY=location.pathname, DIRKEY='dir:'+KEY.replace(/[^/]*$/,''), LS='wmn-pending:'+KEY, LSHIDE='wmn-hide:'+KEY;
 const BLOCKS='p,li,dt,dd,h1,h2,h3,h4,h5,h6,.eq,figure,table,pre,blockquote,.note,.diffnote,.widget';
-const OURS='.wmn-card,.wmn-bar,.wmn-panel,.wmn-banner,.wmn-add';
+const OURS='.wmn-card,.wmn-bar,.wmn-panel,.wmn-banner,.wmn-add,.wmn-pop';
 const canSave=!!window.showDirectoryPicker;
+const COLORS={y:'rgba(255,214,0,.45)',g:'rgba(110,205,90,.4)',b:'rgba(90,170,255,.38)',p:'rgba(255,110,170,.38)'};
+const canPaint=!!(window.CSS&&CSS.highlights&&window.Highlight);
 const DELIMS=[{left:'$$',right:'$$',display:true},{left:'\\[',right:'\\]',display:true},{left:'\\(',right:'\\)',display:false},{left:'$',right:'$',display:false}];
 let data=(window.NOTES&&Array.isArray(window.NOTES.notes))?window.NOTES:{version:1,updated:'',notes:[]};
 let dirty=false, dirH=null, fileH=null, diskStamp=null, busy=false, again=false, picking=null, target=null, ROOT=null;
 const where=new Map();      // note id -> block element
+const rng=new Map();        // highlight id -> Range over its words
 const index=new Map();      // tag|fingerprint -> [blocks, in document order]
 const now=()=>new Date().toISOString();
 const el=(tag,cls,txt)=>{const e=document.createElement(tag); if(cls) e.className=cls; if(txt!=null) e.textContent=txt; return e;};
@@ -86,6 +95,41 @@ function anchorOf(b){
 const blockAt=t=>{const b=t&&t.closest&&t.closest(BLOCKS); return b&&ROOT.contains(b)&&!b.closest(OURS)?b:null;};
 const listFor=b=>{const k=keyOf(b), l=index.get(k)||index.set(k,[]).get(k); if(!l.includes(b)) l.push(b); return l;};
 
+/* ---- highlights: a passage inside a block, found again by its words and the words around them ---- */
+const SKIP=OURS+',.katex,svg,script,style,textarea,mjx-container,.MathJax';
+function flat(b){            // the block's visible text, whitespace runs collapsed, and the text node + offset of each character
+  const s=[], map=[], w=document.createTreeWalker(b,NodeFilter.SHOW_TEXT);
+  for(let t;(t=w.nextNode());){
+    if(t.parentElement.closest(SKIP)) continue;
+    for(let o=0;o<t.data.length;o++){ const sp=/\s/.test(t.data[o]); if(sp&&s[s.length-1]===' ') continue; s.push(sp?' ':t.data[o]); map.push([t,o]); }
+  }
+  return {s:s.join(''),map};
+}
+const common=(a,b,back)=>{ let i=0; while(i<a.length&&i<b.length&&(back?a[a.length-1-i]===b[b.length-1-i]:a[i]===b[i])) i++; return i; };
+function locate(b,h){        // a Range over h.quote in block b; if the words repeat, the copy whose surroundings match best
+  if(!h.quote) return null;
+  const {s,map}=flat(b), L=h.quote.length; let i0=-1, top=-Infinity;
+  for(let i=s.indexOf(h.quote);i>=0;i=s.indexOf(h.quote,i+1)){
+    const v=common(s.slice(Math.max(0,i-32),i),h.pre||'',true)+common(s.slice(i+L,i+L+32),h.suf||'',false)-Math.abs(i-(h.at||0))/1e4;
+    if(v>top){ top=v; i0=i; }
+  }
+  if(i0<0) return null;
+  const a=map[i0], z=map[i0+L-1], r=document.createRange(); r.setStart(a[0],a[1]); r.setEnd(z[0],z[1]+1); return r;
+}
+function grab(b,r){          // the part of selection r inside block b (a selection that runs on into the next block is cut there)
+  const {s,map}=flat(b); let a=-1, z=-1;
+  map.forEach(([t,o],i)=>{ if(r.comparePoint(t,o)===0&&r.comparePoint(t,o+1)===0){ if(a<0) a=i; z=i; } });
+  while(a>=0&&a<=z&&s[a]===' ') a++; while(z>=a&&s[z]===' ') z--;
+  return a<0||z<a?null:{quote:s.slice(a,z+1),pre:s.slice(Math.max(0,a-32),a),suf:s.slice(z+1,z+33),at:a};
+}
+function paint(){
+  if(!canPaint) return;
+  const g={};
+  if(!document.body.classList.contains('wmn-hide')) for(const n of data.notes){ const r=rng.get(n.id); if(r&&n.hl) (g[n.hl.color]=g[n.hl.color]||[]).push(r); }
+  for(const k in COLORS) CSS.highlights.set('wmn-'+k,new Highlight(...(g[k]||[])));
+}
+const quoteOf=n=>{ if(!n.hl) return []; const q=n.hl.quote, d=el('div','wmn-quote','“'+(q.length>200?q.slice(0,200)+'…':q)+'”'); d.style.borderColor=COLORS[n.hl.color]||COLORS.y; return [d]; };
+
 /* ---- rendering ---- */
 function after(b,c){ let r=b; while(r.nextElementSibling&&r.nextElementSibling.classList.contains('wmn-card')) r=r.nextElementSibling; r.after(c); }
 function math(e){
@@ -97,50 +141,52 @@ function card(n){
   const t=el('div','wmn-text',n.text), m=el('div','wmn-meta');
   m.append(el('span','',(n.updated||'').slice(0,16).replace('T',' ')));
   if(canSave) m.append(btn('Edit',()=>edit(n,c,false),true),btn('Delete',()=>del(n),true));
-  c.append(t,m); math(t); return c;
+  c.append(...quoteOf(n),t,m); math(t); return c;
 }
 function edit(n,c,isNew){
   const ta=el('textarea'); ta.value=n.text; ta.placeholder='Your note. $math$ works. Ctrl/Cmd+Enter saves, Esc cancels.';
   const ok=btn('Save note',()=>{
     const t=ta.value.trim();
-    if(!t){ if(isNew) c.remove(); else del(n,true); return; }
-    n.text=t; n.updated=now(); if(isNew) data.notes.push(n);
-    c.replaceWith(card(n)); changed();
+    if(!t&&!n.hl){ if(isNew) c.remove(); else del(n,true); return; }   // an empty note on a highlight keeps the highlight
+    n.text=t; n.updated=now(); if(!data.notes.includes(n)) data.notes.push(n);
+    if(t) c.replaceWith(card(n)); else c.remove(); changed();
   });
-  const no=btn('Cancel',()=>{ if(isNew) c.remove(); else c.replaceWith(card(n)); },true);
+  const no=btn('Cancel',()=>{ if(isNew||!n.text) c.remove(); else c.replaceWith(card(n)); },true);
   const m=el('div','wmn-meta'); m.append(ok,no);
   ta.addEventListener('keydown',e=>{ if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)) ok.click(); if(e.key==='Escape') no.click(); });
-  c.replaceChildren(ta,m); ta.focus();
+  c.replaceChildren(...quoteOf(n),ta,m); ta.focus();
 }
 function del(n,quiet){
-  if(!quiet&&!confirm('Delete this note?')) return;
-  data.notes=data.notes.filter(x=>x!==n); where.delete(n.id); (data.deleted=data.deleted||[]).push(n.id);
+  if(!quiet&&!confirm(n.hl?'Delete this highlight'+(n.text?' and its note?':'?'):'Delete this note?')) return;
+  data.notes=data.notes.filter(x=>x!==n); where.delete(n.id); rng.delete(n.id); paint(); (data.deleted=data.deleted||[]).push(n.id);
   document.querySelectorAll('.wmn-card[data-id="'+n.id+'"]').forEach(c=>c.remove());
   changed(); panel();
 }
 function place(){
   LIST=[...ROOT.querySelectorAll(BLOCKS)].filter(b=>!b.closest(OURS));
-  LIST.forEach(listFor);
+  LIST.forEach(listFor); rng.clear();
   let moved=0;
   for(const n of data.notes){
     const list=index.get(n.tag+'|'+n.fp)||[];
     let b=list.length>1?(list.filter(x=>anchorOf(x)===n.anchor)[0]||list[Math.min(n.k||0,list.length-1)]):list[0];
     if(b){ if(!n.txt) context(n,b); }          // older notes: record the text so they can follow later edits
     else if((b=follow(n))){ moved++; Object.assign(n,{tag:b.tagName,fp:fp(b),anchor:anchorOf(b),k:listFor(b).indexOf(b)}); context(n,b); }
-    if(b){ where.set(n.id,b); after(b,card(n)); }
+    let r=null; if(b&&n.hl&&!(r=locate(b,n.hl))) b=null;       // a highlight whose words are gone is unattached
+    if(b){ where.set(n.id,b); if(r) rng.set(n.id,r); if(n.text) after(b,card(n)); }
   }
-  return moved;
+  paint(); return moved;
 }
 const orphans=()=>data.notes.filter(n=>!where.has(n.id));
 
 /* ---- toolbar and unattached-notes panel ---- */
 const bar=el('div','wmn-bar'), info=el('span'), status=el('span'), pnl=el('div','wmn-panel');
-const hideBtn=btn('',()=>{ document.body.classList.toggle('wmn-hide'); lsSet(LSHIDE,document.body.classList.contains('wmn-hide')?'1':null); bar_(); },true);
+const hideBtn=btn('',()=>{ document.body.classList.toggle('wmn-hide'); lsSet(LSHIDE,document.body.classList.contains('wmn-hide')?'1':null); bar_(); paint(); },true);
 const orphBtn=btn('',()=>{ pnl.style.display=pnl.style.display==='block'?'none':'block'; panel(); },true);
 const syncBtn=el('button','wmn-sync'); syncBtn.type='button'; let syncFix=null; syncBtn.onclick=()=>{ if(syncFix) syncFix(); };
 function bar_(){
   const o=orphans().length;
-  info.textContent='Notes: '+data.notes.length;
+  const h=data.notes.filter(n=>n.hl).length;
+  info.textContent='Notes: '+data.notes.filter(n=>n.text).length+(h?' · Highlights: '+h:'');
   hideBtn.textContent=document.body.classList.contains('wmn-hide')?'Show':'Hide';
   orphBtn.textContent=o+' unattached'; orphBtn.style.display=o?'':'none';
 }
@@ -242,6 +288,7 @@ function ask(){
 /* ---- start (after MathJax has typeset, if the page uses it; KaTeX auto-render runs before us) ---- */
 function init(){
   ROOT=document.querySelector('main')||document.body;
+  document.head.append(el('style','',Object.entries(COLORS).map(([k,v])=>'::highlight(wmn-'+k+'){background-color:'+v+'}').join('\n')));
   diskStamp=data.updated||null;                              // what the notes.js <script> read from disk
   const pending=lsGet(LS);
   if(pending){ try{ const p=JSON.parse(pending); if((p.updated||'')>(data.updated||'')){ data=merge(p,data); dirty=true; } }catch(e){} }
@@ -275,9 +322,48 @@ function init(){
     e.preventDefault(); e.stopPropagation(); b.classList.remove('wmn-target');
     const n=picking, list=listFor(b);
     Object.assign(n,{tag:b.tagName,fp:fp(b),anchor:anchorOf(b),k:list.indexOf(b),updated:now()}); context(n,b);
-    picking=null; where.set(n.id,b); after(b,card(n)); changed();
+    const r=n.hl&&locate(b,n.hl);                 // a highlight whose words are not in this block becomes a note quoting them
+    if(r){ rng.set(n.id,r); paint(); } else if(n.hl){ n.text=('“'+n.hl.quote+'” '+n.text).trim(); delete n.hl; }
+    picking=null; where.set(n.id,b); if(n.text) after(b,card(n)); changed();
   },true);
-  document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&picking){ picking=null; if(target) target.classList.remove('wmn-target'); status.textContent=''; bar_(); } });
+
+  /* highlights: select text, then pick a colour or "Note"; click a highlight to recolour it, edit its note or delete it */
+  const pop=el('div','wmn-pop'); document.body.append(pop);
+  const hide=()=>{ pop.style.display='none'; };
+  pop.addEventListener('mousedown',e=>e.preventDefault());      // keep the selection while a button is pressed
+  function noteFor(n){
+    const b=where.get(n.id); if(!b) return;
+    const old=ROOT.querySelector('.wmn-card[data-id="'+n.id+'"]'), c=old||el('div','wmn-card');
+    if(!old){ c.dataset.id=n.id; after(b,c); } edit(n,c,false);
+  }
+  function popup(x,y,n,make){     // n: the clicked highlight; or null, and make() creates one from the selection
+    const get=()=>n||(n=make()), done=()=>{ hide(); getSelection().removeAllRanges(); };
+    pop.replaceChildren(...Object.keys(COLORS).map(k=>{
+      const s=btn('',()=>{ const h=get(); h.hl.color=k; h.updated=now(); done(); paint(); changed(); });
+      s.className='wmn-sw'+(n&&n.hl.color===k?' on':''); s.style.background=COLORS[k]; s.title='Highlight'; return s;
+    }), btn(n&&n.text?'Edit note':'Note',()=>{ const h=get(); done(); noteFor(h); },true));
+    if(n) pop.append(btn('Delete',()=>{ hide(); del(n); },true));
+    pop.style.left=Math.max(4,x+scrollX)+'px'; pop.style.top=(y+scrollY+6)+'px'; pop.style.display='flex';
+  }
+  document.addEventListener('mouseup',e=>{
+    if(picking||(e.target.closest&&e.target.closest('.wmn-pop'))) return;
+    setTimeout(()=>{
+      const s=getSelection();
+      if(s.rangeCount&&!s.isCollapsed){
+        const r=s.getRangeAt(0), sc=r.startContainer, b=blockAt(sc.nodeType===1?sc:sc.parentElement), h=b&&grab(b,r);
+        if(!h) return hide();
+        const box=r.getBoundingClientRect();
+        return popup(box.left,box.bottom,null,()=>{
+          const n={id:'h'+Date.now().toString(36),tag:b.tagName,fp:fp(b),anchor:anchorOf(b),k:listFor(b).indexOf(b),text:'',hl:Object.assign(h,{color:'y'}),created:now(),updated:now()};
+          context(n,b); data.notes.push(n); where.set(n.id,b); rng.set(n.id,locate(b,n.hl)); paint(); changed(); return n;
+        });
+      }
+      const p=document.caretRangeFromPoint&&document.caretRangeFromPoint(e.clientX,e.clientY);
+      const n=p&&data.notes.find(x=>{ const r=rng.get(x.id); return r&&r.isPointInRange(p.startContainer,p.startOffset); });
+      if(n) popup(e.clientX,e.clientY+10,n); else hide();
+    });
+  });
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape') hide(); if(e.key==='Escape'&&picking){ picking=null; if(target) target.classList.remove('wmn-target'); status.textContent=''; bar_(); } });
 }
 function start(){
   const mj=window.MathJax&&MathJax.startup&&MathJax.startup.promise;

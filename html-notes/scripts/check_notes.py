@@ -15,6 +15,9 @@ from playwright.sync_api import sync_playwright
 JS = """() => ({
   bar: (document.querySelector('.wmn-bar') || {}).innerText || null,
   loaded: window.NOTES ? window.NOTES.notes.length : null,
+  withText: window.NOTES ? window.NOTES.notes.filter(n => n.text).length : null,
+  highlights: window.NOTES ? window.NOTES.notes.filter(n => n.hl).length : null,
+  painted: (window.CSS && CSS.highlights) ? [...CSS.highlights.values()].reduce((s, h) => s + h.size, 0) : null,
   cards: document.querySelectorAll('.wmn-card').length,
   katexErrors: document.querySelectorAll('.katex-error').length,
 })"""
@@ -31,7 +34,8 @@ def check(pw, name, launch, url):
     r = page.evaluate(JS)
     browser.close()
     bar = (r["bar"] or "NO TOOLBAR").replace("\n", " · ")
-    print(f"{name:7} toolbar: {bar} | notes in file: {r['loaded']} | cards shown: {r['cards']}"
+    print(f"{name:7} toolbar: {bar} | items in file: {r['loaded']} (with note text: {r['withText']},"
+          f" highlights: {r['highlights']}) | cards shown: {r['cards']} | highlights drawn: {r['painted']}"
           f" | KaTeX errors: {r['katexErrors']} | page errors: {errors or 'none'}")
     return r["bar"] is not None and not errors
 

@@ -30,6 +30,7 @@ The script loads the page in headless Chrome and WebKit (Safari's engine). For e
 
 ## What to tell the user
 
+- **Highlights:** in Chrome, select text inside a paragraph. A popup offers four colours and **Note**. A colour highlights the text; **Note** highlights it and opens a note card that quotes it. Clicking a highlight reopens the popup to change the colour, edit the note, or **Delete**. Highlights are saved in the same notes file (an item with an `hl` field), sync and merge like notes, and show read-only in Safari 17.2+ and Firefox 140+. **Hide** hides highlights too.
 - **Saving is automatic.** There is no Save button. Every change is written to the notes file at once, and the toolbar shows **✓ Synced**.
 - **One-time setup per folder:** the first time a note is added on a page whose folder is not yet connected, a dialog asks to "Choose folder". Pick the folder that contains the HTML file. The page checks this and warns if the folder is wrong. Chrome remembers the folder for every page in it. If Chrome asks for permission, "Allow on every visit" stops it asking again after a restart.
 - **Out of sync:** the toolbar indicator turns red and says what is wrong and what a click on it will do: choose the folder, let Chrome write the file again, or retry a failed write. Until then, changes are kept in the browser's localStorage and are written on the next successful sync.
@@ -43,4 +44,6 @@ The script loads the page in headless Chrome and WebKit (Safari's engine). For e
 
 - Notes attach to these blocks: `p, li, dt, dd, h1–h6, figure, table, pre, blockquote`, and the classes `.eq, .note, .diffnote, .widget`. They are searched inside `<main>` if the page has one, otherwise inside `<body>`. To support a page with other block wrappers, extend `BLOCKS` in `assets/notes-layer.html` and re-run the script on the page.
 - Two blocks with identical leading text are told apart by the nearest preceding `id` and their order on the page.
+- A highlight stays inside one block: a selection that runs into the next block is cut at the end of the first. Text inside KaTeX/MathJax formulas cannot be selected for a highlight (a highlight around inline math still covers it); put a note on the equation instead. A highlight follows its block like a note, and becomes unattached when its exact words are no longer in the block. Reattaching it to a block without those words turns it into a note that quotes them.
+- `scripts/test_highlights.py` runs the highlight flows in headless Chrome on a throwaway page. Run it after changing the layer.
 - The page needs `</head>` and `</body>` tags. HTML fragments are refused.
