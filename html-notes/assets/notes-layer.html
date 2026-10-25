@@ -6,43 +6,83 @@
      one-time "choose folder" step), and re-reads the file when the tab regains focus; changes from two places
      are merged by note id. Other browsers show the notes read-only. Re-run add_notes.py to update this block.
      Highlights: select text, pick a colour or add a note. A highlight is stored with its block like a note, plus
-     its words and the 32 characters on each side, and is drawn with the CSS Custom Highlight API (no DOM change). -->
+     its words and the 32 characters on each side, and is drawn with the CSS Custom Highlight API (no DOM change).
+     AI queue: "For AI" marks a note (ai:true) for an AI, which records the outcome with resolve_notes.py
+     (status fixed/answered/declined + resolution); the card shows it, and resolved notes can be hidden.
+     Strike: crossed-out words (strike:true) are queued for the AI to delete. Step-through: the toolbar's
+     ◀ ▶ (or the ← → keys) visit all items, the AI results not yet reviewed, or the notes whose paragraph changed (n.was). -->
 <style>
-.wmn-banner,.wmn-card,.wmn-bar,.wmn-panel,.wmn-add,.wmn-pop{--wmn-accent:#C9932B;--wmn-soft:#F1E4C4;--wmn-paper:#FFF8E1;--wmn-ink:#1C2B33;--wmn-ink2:#4A5A63;--wmn-rule:#C9D3D6;--wmn-loss:#A63D40;--wmn-sans:"Avenir Next","Avenir","Helvetica Neue",Helvetica,Arial,sans-serif;color:var(--wmn-ink)}
+/* z-index near the maximum, so no page element covers the layer; the layer's own order: + < bar, panel < popup < dialog, message */
+.wmn-banner,.wmn-card,.wmn-bar,.wmn-panel,.wmn-add,.wmn-pop,.wmn-toast{--wmn-accent:#C9932B;--wmn-soft:#F1E4C4;--wmn-paper:#FFF8E1;--wmn-ink:#1C2B33;--wmn-ink2:#4A5A63;--wmn-rule:#C9D3D6;--wmn-loss:#A63D40;--wmn-sans:"Avenir Next","Avenir","Helvetica Neue",Helvetica,Arial,sans-serif;color:var(--wmn-ink);font-weight:400}   /* not the page's weight: a light page font made notes faint */
 .wmn-banner{font-family:var(--wmn-sans);font-size:.85rem;background:var(--wmn-soft);border-bottom:1px solid var(--wmn-accent);padding:6px 16px;text-align:center}
 .wmn-btn{font-family:var(--wmn-sans);font-size:.75rem;line-height:1.4;background:var(--wmn-ink);color:#fff;border:1px solid var(--wmn-ink);border-radius:0;padding:2px 8px;margin:0;cursor:pointer}
 .wmn-btn.alt{background:#fff;color:var(--wmn-ink)}
-.wmn-add{position:absolute;z-index:50;display:none;width:22px;height:22px;padding:0;border:0;border-radius:50%;background:var(--wmn-accent);color:#fff;font:600 16px/22px var(--wmn-sans);text-align:center;opacity:.85;cursor:pointer}
+.wmn-add{position:absolute;z-index:2147483000;display:none;width:22px;height:22px;padding:0;border:0;border-radius:50%;background:var(--wmn-accent);color:#fff;font:600 16px/22px var(--wmn-sans);text-align:center;opacity:.85;cursor:pointer}
 .wmn-add:hover{opacity:1}
 .wmn-card{font-family:var(--wmn-sans);font-size:.9rem;line-height:1.45;text-align:left;background:var(--wmn-paper);border:1px solid var(--wmn-accent);border-left:4px solid var(--wmn-accent);padding:8px 12px;margin:-6px 0 18px;list-style:none}
+.wmn-text,.wmn-card textarea{color:#1A1A1A}   /* note text: 90% gray */
 .wmn-text{white-space:pre-wrap}
 .wmn-meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:.75rem;color:var(--wmn-ink2);margin-top:6px}
 .wmn-card textarea{box-sizing:border-box;width:100%;min-height:90px;font:inherit;border:1px solid var(--wmn-rule);padding:6px}
-.wmn-bar{position:fixed;right:12px;bottom:12px;z-index:60;display:flex;flex-wrap:wrap;gap:8px;align-items:center;max-width:calc(100vw - 24px);font-family:var(--wmn-sans);font-size:.8rem;background:#fff;border:1px solid var(--wmn-rule);box-shadow:0 2px 8px rgba(0,0,0,.12);padding:6px 10px}
+.wmn-bar{position:fixed;left:12px;right:12px;bottom:12px;z-index:2147483001;display:flex;flex-wrap:wrap;gap:8px;align-items:center;box-sizing:border-box;font-family:var(--wmn-sans);font-size:.8rem;background:#fff;border:1px solid var(--wmn-rule);box-shadow:0 2px 8px rgba(0,0,0,.12);padding:6px 10px}
+.wmn-bar.wmn-off{display:none}
 .wmn-dirty{color:var(--wmn-loss);font-weight:600}
 .wmn-sync{font-family:var(--wmn-sans);font-size:.75rem;border:0;background:none;padding:2px 4px;cursor:default;color:var(--wmn-ink2)}
 .wmn-sync.warn{color:var(--wmn-loss);font-weight:600;cursor:pointer;text-decoration:underline}
-.wmn-dialog{position:fixed;left:50%;top:30%;transform:translate(-50%,-30%);z-index:70;box-sizing:border-box;width:min(460px,calc(100vw - 24px));font-family:var(--wmn-sans);font-size:.9rem;line-height:1.45;color:var(--wmn-ink);background:#fff;border:1px solid var(--wmn-accent);border-left:4px solid var(--wmn-accent);box-shadow:0 4px 16px rgba(0,0,0,.18);padding:14px 16px}
+.wmn-dialog{position:fixed;left:50%;top:30%;transform:translate(-50%,-30%);z-index:2147483003;box-sizing:border-box;width:min(460px,calc(100vw - 24px));font-family:var(--wmn-sans);font-size:.9rem;line-height:1.45;color:var(--wmn-ink);background:#fff;border:1px solid var(--wmn-accent);border-left:4px solid var(--wmn-accent);box-shadow:0 4px 16px rgba(0,0,0,.18);padding:14px 16px}
 .wmn-dialog p{margin:0 0 10px}
-.wmn-panel{position:fixed;right:12px;bottom:56px;z-index:60;display:none;box-sizing:border-box;width:min(440px,calc(100vw - 24px));max-height:60vh;overflow:auto;background:#fff;border:1px solid var(--wmn-rule);box-shadow:0 2px 8px rgba(0,0,0,.12);padding:10px}
+.wmn-panel{position:fixed;right:12px;bottom:56px;z-index:2147483001;display:none;box-sizing:border-box;width:min(440px,calc(100vw - 24px));max-height:60vh;overflow:auto;background:#fff;border:1px solid var(--wmn-rule);box-shadow:0 2px 8px rgba(0,0,0,.12);padding:10px}
 .wmn-panel .wmn-card{margin:0 0 10px}
 .wmn-old{font-size:.75rem;color:var(--wmn-ink2);margin-bottom:4px}
+.wmn-head{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:4px}
+.wmn-card.wmn-closed{padding:3px 10px}
+.wmn-card.wmn-closed .wmn-head{margin-bottom:0}
+.wmn-preview{flex:1;min-width:8em;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:pointer;color:#1A1A1A}
+.wmn-grow{flex:1}
+.wmn-count{font-size:.75rem;color:var(--wmn-ink2)}
+.wmn-ico{font-family:var(--wmn-sans);font-size:.85rem;line-height:1.2;background:none;border:1px solid transparent;border-radius:3px;padding:1px 5px;margin:0;cursor:pointer;color:var(--wmn-ink)}
+.wmn-ico:hover{border-color:var(--wmn-rule);background:#fff}
+.wmn-ico.on{background:#3B5BA9;border-color:#3B5BA9}
+button.wmn-tag{cursor:pointer;background:#fff;font-family:inherit;line-height:inherit}
+.wmn-me{margin-top:6px}
+.wmn-old del{color:var(--wmn-loss)}
+.wmn-old ins{color:#2E6B34;text-decoration:underline}
+.wmn-tag{display:inline-block;font-size:.7rem;font-weight:600;letter-spacing:.03em;padding:0 6px;margin-right:6px;border:1px solid;border-radius:2px}
+.wmn-tag.ai{color:#fff;background:#3B5BA9;border-color:#3B5BA9}
+.wmn-tag.fixed{color:#2E6B34}
+.wmn-tag.answered{color:#3B5BA9}
+.wmn-tag.declined{color:var(--wmn-loss)}
+.wmn-tag.strike{color:#C0392B}
+.wmn-tag.was{color:#8A5A00}
+.wmn-flash{animation:wmn-flash 1.7s}
+@keyframes wmn-flash{0%,60%{outline:3px solid #3B5BA9;outline-offset:3px}100%{outline:3px solid transparent;outline-offset:3px}}
+.wmn-reply{margin-top:6px;padding:4px 8px;background:#fff;border-left:3px solid var(--wmn-rule);white-space:pre-wrap;color:#1A1A1A}
+.wmn-card.wmn-queued{border-left-color:#3B5BA9}
+.wmn-card.wmn-done{border-color:var(--wmn-rule);border-left-color:#8A9A9F}
 body.wmn-hide .wmn-card:not(.wmn-panel .wmn-card){display:none}
+body.wmn-hide-done .wmn-card.wmn-done:not(.wmn-panel .wmn-card){display:none}
 .wmn-target{outline:2px dashed #C9932B;outline-offset:2px}
-.wmn-pop{position:absolute;z-index:65;display:none;gap:6px;align-items:center;background:#fff;border:1px solid var(--wmn-rule);box-shadow:0 2px 8px rgba(0,0,0,.18);padding:4px 6px}
+.wmn-pop{position:absolute;z-index:2147483002;display:none;gap:6px;align-items:center;background:#fff;border:1px solid var(--wmn-rule);box-shadow:0 2px 8px rgba(0,0,0,.18);padding:4px 6px}
 .wmn-sw{width:20px;height:20px;padding:0;border:1px solid var(--wmn-ink2);border-radius:50%;cursor:pointer}
 .wmn-sw.on{outline:2px solid var(--wmn-ink);outline-offset:1px}
 .wmn-quote{font-size:.8rem;font-style:italic;color:var(--wmn-ink2);border-left:4px solid;padding-left:8px;margin-bottom:6px}
-@media print{.wmn-banner,.wmn-add,.wmn-bar,.wmn-panel,.wmn-dialog,.wmn-pop{display:none!important}}
+.wmn-toast{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:2147483003;font-family:var(--wmn-sans);font-size:.85rem;background:var(--wmn-ink);color:#fff;padding:4px 12px;opacity:0;transition:opacity .3s;pointer-events:none}
+.wmn-toast.on{opacity:.92}
+@media print{.wmn-banner,.wmn-add,.wmn-bar,.wmn-panel,.wmn-dialog,.wmn-pop,.wmn-toast,.wmn-pad{display:none!important}}
 </style>
 <script>
 (function(){
 'use strict';
 const FILE='__NOTES_FILE__', HTML='__HTML_FILE__';
-const KEY=location.pathname, DIRKEY='dir:'+KEY.replace(/[^/]*$/,''), LS='wmn-pending:'+KEY, LSHIDE='wmn-hide:'+KEY;
+const KEY=location.pathname, DIRKEY='dir:'+KEY.replace(/[^/]*$/,''), LS='wmn-pending:'+KEY, LSHIDE='wmn-hide:'+KEY, LSDONE='wmn-hide-done:'+KEY, LSKEYS='wmn-keys:'+KEY, LSBAR='wmn-bar-off:'+KEY;
 const BLOCKS='p,li,dt,dd,h1,h2,h3,h4,h5,h6,.eq,figure,table,pre,blockquote,.note,.diffnote,.widget';
-const OURS='.wmn-card,.wmn-bar,.wmn-panel,.wmn-banner,.wmn-add,.wmn-pop';
+const OURS='.wmn-card,.wmn-bar,.wmn-panel,.wmn-banner,.wmn-add,.wmn-pop,.wmn-toast,.wmn-pad';
 const canSave=!!window.showDirectoryPicker;
+/* Where keys belong to the page: TYPING for Esc (text entry only; a focused slider or button must not block Esc),
+   OWNKEYS for the arrows (also sliders, which use them, and anything inside an interactive widget) */
+const TYPING='textarea,select,[contenteditable=""],[contenteditable="true"],input:not([type=range]):not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]):not([type=reset]):not([type=color]):not([type=file])';
+const OWNKEYS=TYPING+',input[type=range],.widget';
+const inside=(t,sel)=>!!(t&&t.closest&&t.closest(sel));
 const COLORS={y:'rgba(255,214,0,.45)',g:'rgba(110,205,90,.4)',b:'rgba(90,170,255,.38)',p:'rgba(255,110,170,.38)'};
 const canPaint=!!(window.CSS&&CSS.highlights&&window.Highlight);
 const DELIMS=[{left:'$$',right:'$$',display:true},{left:'\\[',right:'\\]',display:true},{left:'\\(',right:'\\)',display:false},{left:'$',right:'$',display:false}];
@@ -73,7 +113,13 @@ function toks(s){ const m=new Map(); for(const w of (s||'').toLowerCase().match(
 function dice(a,b){ let n=0,d=0; for(const [w,c] of a){ d+=c; if(b.has(w)) n+=Math.min(c,b.get(w)); } for(const c of b.values()) d+=c; return d?2*n/d:0; }
 let LIST=[];                // all blocks in document order
 const TOK=new Map(), tk=b=>TOK.get(b)||TOK.set(b,toks(textOf(b))).get(b);
-function context(n,b){ const i=LIST.indexOf(b); n.txt=snip(b,2000); n.prev=i>0?snip(LIST[i-1],600):''; n.next=i>=0?snip(LIST[i+1],600):''; }
+function context(n,b){ const i=LIST.indexOf(b); n.txt=snip(b,2000); n.prev=i>0?snip(LIST[i-1],600):''; n.next=i>=0?snip(LIST[i+1],600):''; n.sec=secOf(b); }
+/* The headings above a block, outermost first: the section the note is in, given to the AI as context */
+function secOf(b){
+  const out=[]; let lvl=7;
+  for(let j=LIST.indexOf(b)-1;j>=0&&lvl>1;j--){ const m=/^H([1-6])$/.exec(LIST[j].tagName); if(m&&+m[1]<lvl){ lvl=+m[1]; out.unshift(snip(LIST[j],120)); } }
+  return out;
+}
 function best(t,from,to,min){ let j0=-1; for(let j=from;j<to;j++){ const v=dice(t,tk(LIST[j])); if(v>=min){ min=v; j0=j; } } return j0; }
 /* An edited paragraph still sits between its old neighbours: take the most similar block between them.
    If the neighbours are now adjacent, the paragraph was deleted. If the neighbours changed too, use similarity alone. */
@@ -125,10 +171,13 @@ function grab(b,r){          // the part of selection r inside block b (a select
 function paint(){
   if(!canPaint) return;
   const g={};
-  if(!document.body.classList.contains('wmn-hide')) for(const n of data.notes){ const r=rng.get(n.id); if(r&&n.hl) (g[n.hl.color]=g[n.hl.color]||[]).push(r); }
-  for(const k in COLORS) CSS.highlights.set('wmn-'+k,new Highlight(...(g[k]||[])));
+  const done=document.body.classList.contains('wmn-hide-done');
+  if(!document.body.classList.contains('wmn-hide')) for(const n of data.notes){ const r=rng.get(n.id), k=n.strike?'strike':n.hl&&n.hl.color; if(r&&n.hl&&!(n.status&&done)) (g[k]=g[k]||[]).push(r); }
+  for(const k of [...Object.keys(COLORS),'strike']) CSS.highlights.set('wmn-'+k,new Highlight(...(g[k]||[])));
 }
-const quoteOf=n=>{ if(!n.hl) return []; const q=n.hl.quote, d=el('div','wmn-quote','“'+(q.length>200?q.slice(0,200)+'…':q)+'”'); d.style.borderColor=COLORS[n.hl.color]||COLORS.y; return [d]; };
+const STATUS={fixed:'Fixed',answered:'Answered',declined:'Declined'};
+const shown=n=>!!(n.text||n.status||n.resolution||n.was||(n.ai&&!n.strike));   // a plain highlight or a queued strike has no card
+const quoteOf=n=>{ if(!n.hl) return []; const q=n.hl.quote, d=el('div','wmn-quote','“'+(q.length>200?q.slice(0,200)+'…':q)+'”'); d.style.borderColor=n.strike?'#C0392B':COLORS[n.hl.color]||COLORS.y; if(n.strike) d.style.textDecoration='line-through'; return [d]; };
 
 /* ---- rendering ---- */
 function after(b,c){ let r=b; while(r.nextElementSibling&&r.nextElementSibling.classList.contains('wmn-card')) r=r.nextElementSibling; r.after(c); }
@@ -136,31 +185,169 @@ function math(e){
   if(window.renderMathInElement) renderMathInElement(e,{delimiters:DELIMS,throwOnError:false});
   else if(window.MathJax&&MathJax.typesetPromise) MathJax.typesetPromise([e]).catch(()=>{});
 }
-function card(n){
-  const c=el('div','wmn-card'); c.dataset.id=n.id;
-  const t=el('div','wmn-text',n.text), m=el('div','wmn-meta');
-  m.append(el('span','',(n.updated||'').slice(0,16).replace('T',' ')));
-  if(canSave) m.append(btn('Edit',()=>edit(n,c,false),true),btn('Delete',()=>del(n),true));
-  c.append(...quoteOf(n),t,m); math(t); return c;
+/* A note is a conversation: the note itself (n.text), then n.thread, a list of turns {who:'me'|'ai', text, at, status}.
+   Older notes have no thread; their AI replies are in n.history and n.resolution. */
+function turns(n){
+  const t=n.text?[{who:'me',text:n.text,at:n.created}]:[];
+  if(n.thread) return t.concat(n.thread);
+  for(const h of [...(n.history||[]),n]) if(h.resolution) t.push({who:'ai',text:h.resolution,status:h.status,at:h.resolved});
+  return t;
 }
-function edit(n,c,isNew){
-  const ta=el('textarea'); ta.value=n.text; ta.placeholder='Your note. $math$ works. Ctrl/Cmd+Enter saves, Esc cancels.';
-  const ok=btn('Save note',()=>{
+const lastMine=n=>{ const t=n.thread; return t&&t.length&&t[t.length-1].who==='me'?t[t.length-1]:null; };
+const answered=n=>turns(n).some(t=>t.who==='ai');
+function thread(T,skip){
+  return T.filter(t=>t!==skip).map((t,i)=>{
+    const d=t.who==='ai'?el('div','wmn-reply','AI'+(t.status?' ('+(STATUS[t.status]||t.status).toLowerCase()+')':'')+': '+t.text)
+                        :el('div','wmn-text'+(i?' wmn-me':''),(i?'You: ':'')+t.text);
+    math(d); return d;
+  });
+}
+const ico=(t,label,fn,on)=>{ const b=btn(t,fn); b.className='wmn-ico'+(on?' on':''); b.title=label; b.setAttribute('aria-label',label); return b; };
+/* Open or close a note; the state is saved in the notes file */
+function toggle(n){ if(n.collapsed) delete n.collapsed; else n.collapsed=true; n.updated=now(); redraw(n); changed(); }
+/* A card: a header row (open/close, status, tags, icons), then, when open, the conversation and a footer.
+   A closed card is the header alone, with the first words of the note. */
+function card(n){
+  const closed=!!n.collapsed, T=turns(n);
+  const c=el('div','wmn-card'+(n.ai?' wmn-queued':n.status?' wmn-done':'')+(closed?' wmn-closed':'')); c.dataset.id=n.id;
+  const h=el('div','wmn-head');
+  h.append(ico(closed?'▸':'▾',closed?'Open note':'Close note',()=>toggle(n)));
+  if(n.strike) h.append(el('span','wmn-tag strike','Delete'));
+  if(n.ai) h.append(el('span','wmn-tag ai','For AI'));
+  if(n.status){
+    const s=el(canSave&&!n.reviewed?'button':'span','wmn-tag '+n.status,(STATUS[n.status]||n.status)+(n.reviewed?' ✓':''));
+    if(canSave&&!n.reviewed){ s.type='button'; s.title='Mark reviewed'; s.onclick=()=>reviewed(n); } else if(n.reviewed) s.title='Reviewed';
+    h.append(s);
+  }
+  if(n.was) h.append(el('span','wmn-tag was','Paragraph changed'));
+  if(closed){ const q=n.text||(n.hl?'“'+n.hl.quote+'”':''), pv=el('span','wmn-preview',q.length>90?q.slice(0,90)+'…':q); pv.onclick=()=>toggle(n); h.append(pv); }
+  else h.append(el('span','wmn-grow'));
+  // exchanges (your question and the AI's answer): shown only on a closed note that hides a real conversation
+  const ex=T.filter(t=>t.who==='me').length||(T.length?1:0);
+  if(closed&&ex>1){ const k=el('span','wmn-count','💬'+ex); k.title=ex+' exchanges'; h.append(k); }
+  if(canSave){
+    h.append(ico('🤖','For AI',()=>toggleAI(n),n.ai));
+    if(lastMine(n)||!answered(n)) h.append(ico('✎','Edit',()=>edit(n,c,false,lastMine(n)||undefined)));
+    h.append(ico('🗑',n.strike?'Remove strike':'Delete',()=>n.strike?unstrike(n):del(n)));
+  }
+  c.append(h);
+  if(closed) return c;
+  const m=el('div','wmn-meta'), last=T.length?T[T.length-1].at:n.created;
+  m.append(el('span','',(last||n.updated||'').slice(0,16).replace('T',' ')));
+  if(canSave&&((n.status&&!n.reviewed)||n.was)) m.append(btn('Reviewed',()=>reviewed(n)));
+  // Reply answers the AI, so it appears only when the AI has the last word; before that, ✎ edits your message
+  if(canSave&&T.length&&T[T.length-1].who==='ai') m.append(btn('Reply to AI',()=>edit(n,c,false,{who:'me',text:''}),true));
+  const cl=btn('Close note',()=>toggle(n),true); m.append(cl);
+  // a second close button, at the bottom, only on a tall note, where the ▾ at the top may be off screen
+  requestAnimationFrame(()=>{ const h0=c.offsetHeight; if(h0&&h0<12*(parseFloat(getComputedStyle(c).lineHeight)||20)) cl.remove(); });
+  c.append(...quoteOf(n));
+  if(n.was){
+    c.append(wasEl(n));
+    // hovering the note marks the paragraph's new words in the page
+    c.addEventListener('mouseenter',()=>showDiff(n)); c.addEventListener('mouseleave',()=>showDiff(null));
+  }
+  c.append(...thread(T),m); return c;
+}
+/* Edit the note itself, or (turn given) write a reply or change your latest reply. A new reply queues the note. */
+function edit(n,c,isNew,turn){
+  const ta=el('textarea'); ta.value=turn?turn.text:n.text||''; ta.placeholder=(turn?'Your reply':'Your note')+'. $math$ works. Ctrl/Cmd+Enter saves, Esc cancels.';
+  const ok=btn(turn?'Send':'Save note',()=>{
     const t=ta.value.trim();
+    if(turn){
+      if(t){
+        if(!n.thread){ n.thread=turns(n).slice(n.text?1:0); delete n.history; }
+        if(!n.thread.includes(turn)){ n.thread.push(turn); n.ai=true; delete n.status; delete n.reviewed; }
+        turn.text=t; turn.at=now(); delete n.collapsed; n.updated=now(); changed();
+      }
+      c.replaceWith(card(n)); return;
+    }
     if(!t&&!n.hl){ if(isNew) c.remove(); else del(n,true); return; }   // an empty note on a highlight keeps the highlight
     n.text=t; n.updated=now(); if(!data.notes.includes(n)) data.notes.push(n);
-    if(t) c.replaceWith(card(n)); else c.remove(); changed();
+    if(shown(n)) c.replaceWith(card(n)); else c.remove(); changed();
   });
-  const no=btn('Cancel',()=>{ if(isNew||!n.text) c.remove(); else c.replaceWith(card(n)); },true);
+  const no=btn('Cancel',()=>{ if(turn) c.replaceWith(card(n)); else if(!data.notes.includes(n)||!shown(n)) c.remove(); else c.replaceWith(card(n)); },true);
   const m=el('div','wmn-meta'); m.append(ok,no);
   ta.addEventListener('keydown',e=>{ if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)) ok.click(); if(e.key==='Escape') no.click(); });
-  c.replaceChildren(...quoteOf(n),ta,m); ta.focus();
+  ['keydown','keypress','keyup'].forEach(t=>ta.addEventListener(t,e=>e.stopPropagation()));   // typing must not trigger the page's own shortcuts (slide decks)
+  c.classList.remove('wmn-closed');
+  c.replaceChildren(...quoteOf(n),...(turn?thread(turns(n),turn):[]),ta,m); ta.focus();
 }
 function del(n,quiet){
-  if(!quiet&&!confirm(n.hl?'Delete this highlight'+(n.text?' and its note?':'?'):'Delete this note?')) return;
+  if(!quiet&&!confirm(n.strike?'Remove this strike-through?':n.hl?'Delete this highlight'+(n.text?' and its note?':'?'):'Delete this note?')) return;
   data.notes=data.notes.filter(x=>x!==n); where.delete(n.id); rng.delete(n.id); paint(); (data.deleted=data.deleted||[]).push(n.id);
   document.querySelectorAll('.wmn-card[data-id="'+n.id+'"]').forEach(c=>c.remove());
   changed(); panel();
+}
+/* Queue a note for the AI, or take it off the queue. Queuing again reopens a resolved note. */
+function toggleAI(n){
+  if(n.ai) delete n.ai; else { n.ai=true; delete n.status; delete n.reviewed; }
+  n.updated=now(); if(!data.notes.includes(n)) data.notes.push(n); redraw(n); paint(); changed();
+}
+/* A strike is removed at once, without a dialog; the toolbar offers Undo for 10 seconds */
+let undoT=null;
+function unstrike(n){
+  del(n,true); clearTimeout(undoT);
+  const clear=()=>{ status.textContent=''; };
+  status.replaceChildren(el('span','','Strike removed. '),btn('Undo',()=>{
+    data.deleted=(data.deleted||[]).filter(x=>x!==n.id); n.updated=now(); data.notes.push(n);
+    clear(); rerender(); changed();
+  },true));
+  undoT=setTimeout(clear,10000);
+}
+/* "Reviewed": an AI result or a changed paragraph the reader has checked; it leaves the step-through lists */
+function reviewed(n){ if(n.status) n.reviewed=now(); delete n.was; n.collapsed=true; n.updated=now(); redraw(n); changed(); }   // reviewing closes the note
+/* A note keeps its paragraph's text. If the text changed while the note was not resolved, keep the old text
+   in n.was until the reader clicks Reviewed. Widgets are skipped: their text can change on every load. */
+function seen(n,b){
+  const sec=()=>{ if(n.sec) return 0; n.sec=secOf(b); return 1; };   // older notes: record their headings once
+  if(n.txt&&b.matches('.widget')) return sec();
+  const t=snip(b,2000); if(n.txt===t) return sec();
+  if(n.txt&&!n.status&&!n.ai&&!n.was){ n.was=n.txt; delete n.collapsed; }   // a changed paragraph opens its note, so the reader sees the change
+  context(n,b); return 1;
+}
+/* "Paragraph changed": a word-level comparison of the old text (n.was) with the current one (n.txt). Approximate:
+   whole words, and words inside formulas are not marked in the page. */
+const words=t=>(t||'').split(/\s+/).filter(Boolean);
+function diff(a,b){             // longest common subsequence of words -> [['='|'-'|'+', word], ...], or null if too long
+  const N=a.length, M=b.length; if(N*M>250000) return null;
+  const L=Array.from({length:N+1},()=>new Uint16Array(M+1));
+  for(let i=N-1;i>=0;i--) for(let j=M-1;j>=0;j--) L[i][j]=a[i]===b[j]?L[i+1][j+1]+1:Math.max(L[i+1][j],L[i][j+1]);
+  const out=[]; let i=0, j=0;
+  while(i<N&&j<M){ if(a[i]===b[j]){ out.push(['=',a[i]]); i++; j++; } else if(L[i+1][j]>=L[i][j+1]) out.push(['-',a[i++]]); else out.push(['+',b[j++]]); }
+  while(i<N) out.push(['-',a[i++]]); while(j<M) out.push(['+',b[j++]]);
+  return out;
+}
+/* The note's view of the change: removed words struck, new words underlined, long unchanged runs shortened */
+function wasEl(n){
+  const d=el('div','wmn-old','Changes in the paragraph: '), ops=diff(words(n.was),words(n.txt));
+  if(!ops){ d.append('before: '+n.was.slice(0,300)+'…'); return d; }
+  let run=[], kind=null;
+  const flush=()=>{
+    if(!run.length) return;
+    if(kind==='=') d.append((run.length>10?run.slice(0,4).join(' ')+' … '+run.slice(-4).join(' '):run.join(' '))+' ');
+    else d.append(el(kind==='-'?'del':'ins','',run.join(' ')),' ');
+    run=[];
+  };
+  for(const [k,w] of ops){ if(k!==kind){ flush(); kind=k; } run.push(w); }
+  flush(); return d;
+}
+/* Ranges over the new words in the page, found by their text; runs that cannot be found are skipped */
+function changedRanges(n){
+  const b=where.get(n.id), ops=b&&n.was?diff(words(n.was),words(n.txt)):null; if(!ops) return [];
+  const runs=[]; let cur=[];
+  for(const [k,w] of ops){ if(k==='+') cur.push(w); else if(k==='='&&cur.length){ runs.push(cur.join(' ')); cur=[]; } }
+  if(cur.length) runs.push(cur.join(' '));
+  const {s,map}=flat(b), out=[]; let from=0;
+  for(const q of runs){
+    const i=s.indexOf(q,from); if(i<0) continue;
+    const z=map[i+q.length-1], r=document.createRange(); r.setStart(map[i][0],map[i][1]); r.setEnd(z[0],z[1]+1); out.push(r); from=i+q.length;
+  }
+  return out;
+}
+function showDiff(n){ if(canPaint) CSS.highlights.set('wmn-diff',new Highlight(...(n?changedRanges(n):[]))); }
+function redraw(n){
+  const c=document.querySelector('.wmn-card[data-id="'+n.id+'"]'), b=where.get(n.id);
+  if(c){ if(shown(n)) c.replaceWith(card(n)); else c.remove(); } else if(b&&shown(n)) after(b,card(n));
 }
 function place(){
   LIST=[...ROOT.querySelectorAll(BLOCKS)].filter(b=>!b.closest(OURS));
@@ -169,10 +356,10 @@ function place(){
   for(const n of data.notes){
     const list=index.get(n.tag+'|'+n.fp)||[];
     let b=list.length>1?(list.filter(x=>anchorOf(x)===n.anchor)[0]||list[Math.min(n.k||0,list.length-1)]):list[0];
-    if(b){ if(!n.txt) context(n,b); }          // older notes: record the text so they can follow later edits
-    else if((b=follow(n))){ moved++; Object.assign(n,{tag:b.tagName,fp:fp(b),anchor:anchorOf(b),k:listFor(b).indexOf(b)}); context(n,b); }
-    let r=null; if(b&&n.hl&&!(r=locate(b,n.hl))) b=null;       // a highlight whose words are gone is unattached
-    if(b){ where.set(n.id,b); if(r) rng.set(n.id,r); if(n.text) after(b,card(n)); }
+    if(b) moved+=seen(n,b);
+    else if((b=follow(n))){ moved++; Object.assign(n,{tag:b.tagName,fp:fp(b),anchor:anchorOf(b),k:listFor(b).indexOf(b)}); seen(n,b); }
+    let r=null; if(b&&n.hl&&!(r=locate(b,n.hl))&&!n.status) b=null;   // a highlight whose words are gone is unattached, unless resolved (fixing changes the words)
+    if(b){ where.set(n.id,b); if(r) rng.set(n.id,r); if(shown(n)) after(b,card(n)); }
   }
   paint(); return moved;
 }
@@ -182,6 +369,40 @@ const orphans=()=>data.notes.filter(n=>!where.has(n.id));
 const bar=el('div','wmn-bar'), info=el('span'), status=el('span'), pnl=el('div','wmn-panel');
 const hideBtn=btn('',()=>{ document.body.classList.toggle('wmn-hide'); lsSet(LSHIDE,document.body.classList.contains('wmn-hide')?'1':null); bar_(); paint(); },true);
 const orphBtn=btn('',()=>{ pnl.style.display=pnl.style.display==='block'?'none':'block'; panel(); },true);
+const aiInfo=el('span'), doneBtn=btn('',()=>{ document.body.classList.toggle('wmn-hide-done'); lsSet(LSDONE,document.body.classList.contains('wmn-hide-done')?'1':null); bar_(); paint(); },true);
+const allBtn=btn('All for AI',()=>{ const open=data.notes.filter(n=>!n.ai&&!n.status); if(!open.length) return; for(const n of open){ n.ai=true; n.updated=now(); } changed(); rerender(); },true);
+const clrBtn=btn('Clear',()=>{ for(const n of data.notes) if(n.ai){ delete n.ai; n.updated=now(); } changed(); rerender(); },true);
+allBtn.title='Queue every open note and highlight for the AI'; clrBtn.title='Take every note off the AI queue';
+/* step-through: ◀ ▶ visit the items of the chosen list in page order, and flash each one */
+const MODES={all:['All',n=>true],review:['To review',n=>n.status&&!n.reviewed],changed:['Text changed',n=>n.was]};
+const navSel=el('select','wmn-btn alt'), navPos=el('span'), prevB=btn('◀',()=>jump(-1),true), nextB=btn('▶',()=>jump(1),true);
+let mode='all', cur=-1, hoverId=null;   // hoverId: the note under the pointer
+navSel.setAttribute('aria-label','Step through'); prevB.title='Previous'; nextB.title='Next';
+navSel.onchange=()=>{ mode=navSel.value; cur=-1; navPos.textContent=''; navSel.blur(); };   // blur: the arrow keys go back to stepping
+/* The ← → keys step too, so the toolbar need not be on screen. A page that uses the arrows itself (a slide deck)
+   can have them back: the toolbar switch is remembered per page. */
+let keysOn=lsGet(LSKEYS)!=='off', toastT=null;
+const keysBtn=btn('',()=>{ keysOn=!keysOn; lsSet(LSKEYS,keysOn?null:'off'); bar_(); },true);
+keysBtn.title='Left and right arrow keys: step through the notes, or leave them to the page';
+const toast=el('div','wmn-toast');
+function say(t){ toast.textContent=t; toast.classList.add('on'); clearTimeout(toastT); toastT=setTimeout(()=>toast.classList.remove('on'),1500); }
+function navEl(n){ const c=ROOT.querySelector('.wmn-card[data-id="'+n.id+'"]'); return c&&c.offsetParent?c:where.get(n.id); }
+function navItems(m){ const f=MODES[m||mode][1]; return data.notes.filter(n=>where.has(n.id)&&f(n)).map(navEl).sort((a,b)=>a===b?0:a.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING?-1:1); }
+function jump(d){
+  const L=navItems(); if(!L.length){ navPos.textContent='0/0'; say(MODES[mode][0]+': none'); return; }
+  cur=cur<0?(d>0?0:L.length-1):(Math.min(cur,L.length-1)+d+L.length)%L.length;
+  const e=L[cur]; e.scrollIntoView({block:'center'});
+  e.classList.remove('wmn-flash'); void e.offsetWidth; e.classList.add('wmn-flash'); setTimeout(()=>e.classList.remove('wmn-flash'),1700);
+  navPos.textContent=(cur+1)+'/'+L.length; say(MODES[mode][0]+': '+(cur+1)+' / '+L.length);
+}
+/* Open all / Close all: one button; "Close all" while any note on the page is open */
+const cards=()=>data.notes.filter(n=>where.has(n.id)&&shown(n));
+const allBtn2=btn('',()=>{
+  const close=cards().some(n=>!n.collapsed), t=now();
+  for(const n of cards()) if(!!n.collapsed!==close){ if(close) n.collapsed=true; else delete n.collapsed; n.updated=t; }
+  changed(); rerender();
+},true);
+allBtn2.title='Open or close every note on the page';
 const syncBtn=el('button','wmn-sync'); syncBtn.type='button'; let syncFix=null; syncBtn.onclick=()=>{ if(syncFix) syncFix(); };
 function bar_(){
   const o=orphans().length;
@@ -189,6 +410,12 @@ function bar_(){
   info.textContent='Notes: '+data.notes.filter(n=>n.text).length+(h?' · Highlights: '+h:'');
   hideBtn.textContent=document.body.classList.contains('wmn-hide')?'Show':'Hide';
   orphBtn.textContent=o+' unattached'; orphBtn.style.display=o?'':'none';
+  navSel.replaceChildren(...Object.entries(MODES).map(([k,[l]])=>{ const o=el('option','',l+' ('+navItems(k).length+')'); o.value=k; o.selected=k===mode; return o; }));
+  const q=data.notes.filter(n=>n.ai).length, d=data.notes.filter(n=>n.status).length;
+  keysBtn.textContent='← → '+(keysOn?'notes':'page');
+  const C=cards(); allBtn2.textContent=C.some(n=>!n.collapsed)?'Close all':'Open all'; allBtn2.style.display=C.length?'':'none';
+  aiInfo.textContent='For AI: '+q; allBtn.style.display=canSave?'':'none'; clrBtn.style.display=canSave&&q?'':'none';
+  doneBtn.textContent=(document.body.classList.contains('wmn-hide-done')?'Show':'Hide')+' resolved ('+d+')'; doneBtn.style.display=d?'':'none';
 }
 /* The sync indicator. A warning says what is wrong and what a click on it will do. */
 function show(state,msg){
@@ -288,16 +515,61 @@ function ask(){
 /* ---- start (after MathJax has typeset, if the page uses it; KaTeX auto-render runs before us) ---- */
 function init(){
   ROOT=document.querySelector('main')||document.body;
-  document.head.append(el('style','',Object.entries(COLORS).map(([k,v])=>'::highlight(wmn-'+k+'){background-color:'+v+'}').join('\n')));
+  document.head.append(el('style','',Object.entries(COLORS).map(([k,v])=>'::highlight(wmn-'+k+'){background-color:'+v+'}').join('\n')
+    +'\n::highlight(wmn-diff){background-color:rgba(46,107,52,.22);text-decoration-line:underline;text-decoration-color:#2E6B34}'
+    +'\n::highlight(wmn-strike){text-decoration-line:line-through;text-decoration-color:#C0392B;text-decoration-thickness:2px;background-color:rgba(192,57,43,.1)}'));
   diskStamp=data.updated||null;                              // what the notes.js <script> read from disk
   const pending=lsGet(LS);
   if(pending){ try{ const p=JSON.parse(pending); if((p.updated||'')>(data.updated||'')){ data=merge(p,data); dirty=true; } }catch(e){} }
   if(lsGet(LSHIDE)) document.body.classList.add('wmn-hide');
+  if(lsGet(LSDONE)) document.body.classList.add('wmn-hide-done');
   const moved=place();
-  bar.append(info,orphBtn,hideBtn,syncBtn,status); document.body.append(bar,pnl);
+  bar.append(info,navSel,prevB,navPos,nextB,keysBtn,allBtn2,aiInfo,allBtn,clrBtn,doneBtn,orphBtn,hideBtn,syncBtn,status); document.body.append(bar,pnl);
+  // the bar spans the window; space at the end of the page, as tall as the bar, keeps the last lines readable
+  const pad=el('div','wmn-pad'); pad.setAttribute('aria-hidden','true'); document.body.append(pad);
+  const fit=()=>{ pad.style.height=(bar.offsetHeight+24)+'px'; };
+  if(window.ResizeObserver) new ResizeObserver(fit).observe(bar); else fit();
+  /* The bar has the width of the page's text column: the typical left edge and width of its paragraphs */
+  const align=()=>{
+    const P=[...ROOT.querySelectorAll('p')].filter(x=>!x.closest(OURS)).map(x=>x.getBoundingClientRect()).filter(r=>r.width>200).slice(0,40);
+    if(!P.length){ bar.style.left=bar.style.width=''; bar.style.right=''; return; }
+    const med=a=>a.sort((x,y)=>x-y)[a.length>>1], l=Math.max(4,med(P.map(r=>r.left)));
+    bar.style.left=l+'px'; bar.style.right='auto'; bar.style.width=Math.min(med(P.map(r=>r.width)),innerWidth-l-4)+'px';
+  };
+  align(); setTimeout(align,1000); window.addEventListener('resize',align);
+  if(lsGet(LSBAR)) bar.classList.add('wmn-off');
   if(moved){ data.updated=now(); dirty=true; lsSet(LS,JSON.stringify(data)); }
   bar_(); sync('auto');
   window.wmnNotes=()=>data;   // for check_notes.py and debugging
+  document.body.append(toast);
+  /* Esc opens or closes the note under the pointer. Esc keeps its other jobs first (popup, typing, Reattach);
+     with no note under the pointer, the page gets the key. */
+  // capture on window: the page's own handlers cannot hide the pointer from us
+  window.addEventListener('mouseover',e=>{ const c=e.target.closest&&e.target.closest('.wmn-card'); hoverId=c?c.dataset.id:null; },true);
+  let lastY=-1; window.addEventListener('mousemove',e=>{ lastY=e.clientY; },{capture:true,passive:true});
+  /* Esc near the bottom of the window (within the bar's height, or 60px while it is hidden) hides or shows the bar */
+  const nearBottom=()=>lastY>=0&&lastY>=innerHeight-(bar.classList.contains('wmn-off')?60:bar.offsetHeight+24);
+  const toggleBar=()=>{
+    const off=bar.classList.toggle('wmn-off'); lsSet(LSBAR,off?'1':null);
+    say(off?'Toolbar hidden: press Esc near the bottom to show it':'Toolbar shown');
+  };
+  const onScreen=id=>{ const c=document.querySelector('.wmn-card[data-id="'+id+'"]'); if(!c||!c.offsetParent) return false; const r=c.getBoundingClientRect(); return r.bottom>0&&r.top<innerHeight; };
+  window.addEventListener('keydown',e=>{
+    if(e.key!=='Escape'||e.altKey||e.ctrlKey||e.metaKey||e.shiftKey||picking) return;
+    const pp=document.querySelector('.wmn-pop'); if(pp&&pp.style.display==='flex') return;
+    if(inside(e.target,TYPING)) return;
+    if(nearBottom()){ e.preventDefault(); e.stopImmediatePropagation(); toggleBar(); return; }   // the bottom of the window belongs to the bar
+    const n=hoverId&&onScreen(hoverId)&&data.notes.find(x=>x.id===hoverId);
+    if(!n||!shown(n)) return;
+    e.preventDefault(); e.stopImmediatePropagation(); toggle(n);
+  },true);
+  let diffB=null;               // hovering a changed paragraph marks its new words
+  document.addEventListener('mouseover',e=>{ const b=blockAt(e.target); if(!b||b===diffB) return; diffB=b; showDiff(data.notes.find(n=>n.was&&where.get(n.id)===b)||null); });
+  window.addEventListener('keydown',e=>{        // capture: before the page's own handlers, which then do not see the key
+    if(!keysOn||picking||(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')||e.altKey||e.ctrlKey||e.metaKey||e.shiftKey) return;
+    if(inside(e.target,OWNKEYS)) return;
+    e.preventDefault(); e.stopImmediatePropagation(); jump(e.key==='ArrowRight'?1:-1);
+  },true);
   if(!canSave) return;
   const recheck=()=>{ if(document.visibilityState==='visible') sync('auto'); };
   window.addEventListener('focus',recheck); document.addEventListener('visibilitychange',recheck);
@@ -324,7 +596,7 @@ function init(){
     Object.assign(n,{tag:b.tagName,fp:fp(b),anchor:anchorOf(b),k:list.indexOf(b),updated:now()}); context(n,b);
     const r=n.hl&&locate(b,n.hl);                 // a highlight whose words are not in this block becomes a note quoting them
     if(r){ rng.set(n.id,r); paint(); } else if(n.hl){ n.text=('“'+n.hl.quote+'” '+n.text).trim(); delete n.hl; }
-    picking=null; where.set(n.id,b); if(n.text) after(b,card(n)); changed();
+    picking=null; where.set(n.id,b); if(shown(n)) after(b,card(n)); changed();
   },true);
 
   /* highlights: select text, then pick a colour or "Note"; click a highlight to recolour it, edit its note or delete it */
@@ -338,11 +610,13 @@ function init(){
   }
   function popup(x,y,n,make){     // n: the clicked highlight; or null, and make() creates one from the selection
     const get=()=>n||(n=make()), done=()=>{ hide(); getSelection().removeAllRanges(); };
-    pop.replaceChildren(...Object.keys(COLORS).map(k=>{
+    pop.replaceChildren(...(n&&n.strike?[]:Object.keys(COLORS)).map(k=>{
       const s=btn('',()=>{ const h=get(); h.hl.color=k; h.updated=now(); done(); paint(); changed(); });
       s.className='wmn-sw'+(n&&n.hl.color===k?' on':''); s.style.background=COLORS[k]; s.title='Highlight'; return s;
-    }), btn(n&&n.text?'Edit note':'Note',()=>{ const h=get(); done(); noteFor(h); },true));
-    if(n) pop.append(btn('Delete',()=>{ hide(); del(n); },true));
+    }), btn(n&&n.text?'Edit note':'Note',()=>{ const h=get(); done(); noteFor(h); },true),
+        btn(n&&n.ai?'✓ For AI':'For AI',()=>{ const h=get(); done(); toggleAI(h); },true));
+    if(!n){ const s=btn('Strike',()=>{ const h=get(); h.strike=true; h.ai=true; h.updated=now(); done(); paint(); changed(); },true); s.title='Cross out: the AI deletes these words'; pop.append(s); }
+    if(n) pop.append(btn(n.strike?'Remove strike':'Delete',()=>{ hide(); if(n.strike) unstrike(n); else del(n); },true));
     pop.style.left=Math.max(4,x+scrollX)+'px'; pop.style.top=(y+scrollY+6)+'px'; pop.style.display='flex';
   }
   document.addEventListener('mouseup',e=>{
