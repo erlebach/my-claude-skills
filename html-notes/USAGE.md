@@ -184,6 +184,17 @@ The AI follows the "Resolving notes" section of `SKILL.md`. In short, it:
 - records each outcome with `resolve_notes.py mark`, and never edits `page.notes.js` by hand;
 - reports what it did, note by note.
 
+### Notes that ask for a figure
+
+A note can ask for a new figure, or for a change to an existing one ("Regenerate the panel with a camera"). Interactive illustrations are created with the `/design` command of Claude Code (a command, not a skill). For a static figure, the AI uses the `gpt-image-bridge` skill if Claude Code runs with it. Otherwise, the AI declines the note or offers an SVG figure instead.
+
+1. The AI writes the prompt and saves it as a file next to the other figure prompts.
+2. The AI checks each image against the prompt and the page, and draws it again if the image is wrong. It draws at most three times.
+3. The AI saves each image as a new file and links the page to that file. It never overwrites or deletes an existing figure. A changed figure gets a new name, for example `-v3`.
+4. The AI adds the figure to the page with a caption and alt text, and marks the note `fixed`.
+
+Review the figure on the page as you review other results. To ask for changes, use **Reply to AI**.
+
 ## Scripts
 
 All scripts are in `~/.claude/skills/html-notes/scripts/`. They run with plain `python3`. If that Python has no `playwright` package, the scripts that need it start again with `/opt/miniconda3/bin/python`.
