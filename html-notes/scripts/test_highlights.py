@@ -399,13 +399,21 @@ def main():
         flip()
         ok(page.locator(".wmn-dialog").count() == 0 and "Not synced" in page.inner_text(".wmn-bar"), "No: never asks again; the toolbar warning stays")
 
-        # notes off: Alt+N turns off everything the layer adds; the page behaves as without it; it survives a reload
+        # notes off: N over a note turns off everything the layer adds; elsewhere the key is not ours; it survives a reload
         seen = "() => ['.wmn-bar', '.wmn-banner', '.wmn-card'].map(s => [...document.querySelectorAll(s)].filter(e => e.getClientRects().length).length)"
         page.evaluate(nuke)
         page.click("main p >> nth=0")
         ok(page.evaluate(seen)[0] == 1 and page.evaluate(seen)[2] > 0, "notes on: toolbar and cards show")
-        page.keyboard.press("Alt+KeyN")
-        ok(page.evaluate(seen) == [0, 0, 0] and page.evaluate("[...CSS.highlights.values()].reduce((s, h) => s + h.size, 0)") == 0, "Alt+N: toolbar, banner, cards and highlights are gone")
+        page.mouse.move(1, 1)
+        k0 = page.evaluate("window.keysSeen || 0")
+        page.keyboard.press("n")
+        off1 = page.evaluate(seen)
+        page.keyboard.press("n")
+        ok(off1 == [0, 0, 0] and page.evaluate(seen)[0] == 1 and page.evaluate("window.keysSeen || 0") == k0, "N turns all notes off and on from anywhere, and the page does not see the key")
+        page.hover(f"{card} .wmn-head")
+        page.keyboard.press("n")
+        ok(page.evaluate(seen) == [0, 0, 0] and page.evaluate("[...CSS.highlights.values()].reduce((s, h) => s + h.size, 0)") == 0,
+           "N over a note too: toolbar, banner, cards and highlights are gone")
         page.hover("main p >> nth=1")
         add_shown = page.is_visible(".wmn-add")
         page.evaluate(SELECT, [0, "world", "world"])
@@ -424,17 +432,49 @@ def main():
         ok(page.evaluate(seen)[0] == 1 and page.evaluate(seen)[2] > 0, "the corner button turns notes back on")
         page.click(".wmn-bar >> text=Notes off")
         ok(page.evaluate(seen) == [0, 0, 0], "the toolbar button turns notes off")
-        page.keyboard.press("Alt+KeyN")
-        ok(page.evaluate(seen)[0] == 1, "Alt+N turns notes back on")
+        page.mouse.move(5, page.evaluate("innerHeight") - 5)
+        page.click(".wmn-on")
+        page.evaluate(nuke)
+        page.mouse.move(1, 1)
         page.hover("main p >> nth=1")
         page.click(".wmn-add")
         page.evaluate(nuke)
-        page.keyboard.press("Alt+KeyN")
-        ok(page.locator(".wmn-card textarea").is_visible(), "Alt+N does not switch off while typing in a note")
+        page.hover(".wmn-card textarea")                # pointer over the note too: the box still wins
+        page.keyboard.type("nhNH")
+        ok(page.input_value(".wmn-card textarea") == "nhNH" and page.evaluate(seen)[0] == 1
+           and page.evaluate("getComputedStyle(document.querySelector('.wmn-card textarea')).visibility") == "visible",
+           "typing in a note's text box, N and H are just letters, even with the pointer over the note")
         page.mouse.click(300, 300)
-        page.keyboard.press("Alt+KeyN")
-        ok(page.locator(".wmn-card textarea").is_visible() and "Save or cancel" in page.inner_text(".wmn-toast"), "with a note open, Alt+N refuses and says why")
+        page.hover(".wmn-card textarea")
+        page.keyboard.press("n")
+        ok(page.locator(".wmn-card textarea").is_visible() and "Save or cancel" in page.inner_text(".wmn-toast"), "with a note open, N refuses and says why")
         page.click(".wmn-card >> text=Cancel")
+
+        # out-of-date pages: --all finds and updates them; other pages, bak folders and notes files are left alone
+        add = [sys.executable, str(Path(__file__).with_name("add_notes.py"))]
+        f = d / "tree"
+        (f / "sub").mkdir(parents=True)
+        (f / "bak").mkdir()
+        page_src = '<!doctype html><html><head><title>x</title></head><body><main><p>Text.</p></main></body></html>'
+        for rel in ("a.html", "sub/b.html", "bak/c.html"):
+            (f / rel).write_text(page_src)
+            subprocess.run(add + [str(f / rel), "--banner", "My banner"], check=True, capture_output=True)
+        (f / "plain.html").write_text(page_src)
+        (f / "a.notes.js").write_text('window.NOTES = {"version":1,"updated":"x","notes":[]};\n')
+        for rel in ("a.html", "sub/b.html", "bak/c.html"):
+            (f / rel).write_text((f / rel).read_text().replace("const canSave", "const OLD=1, canSave"))
+        old = (f / "a.html").read_text()
+        out = subprocess.run(add + ["--all", str(f), "--check"], capture_output=True, text=True).stdout
+        ok("2 out of date, 0 current" in out and (f / "a.html").read_text() == old, f"--all --check lists the out-of-date pages and changes nothing: {out.splitlines()[-1]}")
+        out = subprocess.run(add + ["--all", str(f)], capture_output=True, text=True).stdout
+        ok("2 updated, 0 current" in out and "OLD=1" not in (f / "a.html").read_text() and "OLD=1" not in (f / "sub/b.html").read_text(), "--all updates them")
+        ok("OLD=1" in (f / "bak/c.html").read_text() and "html-notes" not in (f / "plain.html").read_text(), "--all leaves bak folders and pages without notes alone")
+        ok('"updated":"x"' in (f / "a.notes.js").read_text() and "My banner" in (f / "a.html").read_text(), "--all keeps the notes file and the page's banner")
+        out = subprocess.run(add + ["--all", str(f), "--check"], capture_output=True, text=True).stdout
+        ok("0 out of date, 2 current" in out, "after --all, all pages are current")
+        m0 = (f / "a.html").stat().st_mtime_ns
+        out = subprocess.run(add + [str(f / "a.html")], capture_output=True, text=True).stdout
+        ok("already current" in out and (f / "a.html").stat().st_mtime_ns == m0, "a current page is not rewritten")
 
         # a deck: later content painted over the note, and a box that clips it; Save must still take the click
         (d / "deck.html").write_text("""<!doctype html><html><head><meta charset="utf-8"><title>d</title><style>html,body{overflow:hidden;height:100%;margin:0}
@@ -539,18 +579,29 @@ h2{position:absolute;left:0;right:0;top:110px;height:300px;margin:0;font-size:80
         m1 = deck.evaluate(mark)
         dt = deck.evaluate("() => { const r = document.querySelector('dt').getBoundingClientRect(); return [r.left, r.top]; }")
         ok(m1 and m1[2] == "rgb(232, 89, 12)" and m1[0] < dt[0] and abs(m1[1] - dt[1]) < 2, f"a selected note marks its paragraph with an orange + {m1} {dt}")
-        deck.keyboard.press("Alt+KeyH")
+        deck.keyboard.press("h")
         deck.wait_for_timeout(100)
         hidden = deck.evaluate("s => getComputedStyle(document.querySelector(s)).visibility", card2)
         marked = deck.evaluate(mark) is not None
         deck.mouse.move(1, 1)
-        deck.keyboard.press("Alt+KeyH")
+        deck.keyboard.press("h")
         deck.wait_for_timeout(100)
         ok(hidden == "hidden" and marked and deck.evaluate("s => getComputedStyle(document.querySelector(s)).visibility", card2) == "visible",
-           "Alt+H hides the selected note, keeps the orange +, and shows the note again")
-        deck.keyboard.press("Alt+KeyH")
+           "H over a note hides it and keeps the orange +; H again, from anywhere, shows it")
+        deck.evaluate("() => { window.pageKeys = 0; window.addEventListener('keydown', () => window.pageKeys++); }")
+        deck.keyboard.press("h")
         deck.wait_for_timeout(50)
-        ok("pointer over a note" in deck.inner_text(".wmn-toast"), "Alt+H with no note selected says so")
+        ok(deck.evaluate("s => getComputedStyle(document.querySelector(s)).visibility", card2) == "visible" and deck.evaluate("window.pageKeys") == 1,
+           "H with the pointer off any note is not ours; the page gets it")
+        deck.hover(f"{card2} .wmn-text")
+        deck.keyboard.press("h")
+        deck.wait_for_timeout(100)
+        was = deck.evaluate("s => getComputedStyle(document.querySelector(s)).visibility", card2)
+        listed = deck.evaluate("() => document.querySelector('.wmn-bar select option').textContent")
+        deck.keyboard.press("ArrowDown")
+        deck.wait_for_timeout(100)
+        ok(was == "hidden" and listed == "All (2)" and deck.evaluate("s => getComputedStyle(document.querySelector(s)).visibility", card2) == "visible",
+           "a note hidden with H stays in the step-through list, and stepping shows it again")
         deck.keyboard.press("ArrowDown")
         deck.wait_for_timeout(150)
         ok(deck.evaluate(mark) is not None, "stepping to a note selects it")
@@ -618,6 +669,17 @@ if (!d) return; S[i].classList.remove('on'); i = Math.max(0, Math.min(2, i + d))
         two.wait_for_timeout(100)
         ok(two.evaluate(at) == 0 and "Save or cancel" in two.inner_text(".wmn-toast"), "with text open, ↓ at the end of the text will not leave the slide, and says why")
         two.keyboard.press("Escape")
+        two.evaluate("""() => { const o = document.createElement('div'); o.id = 'panel'; o.style = 'position:fixed;right:0;top:0;width:200px;height:200px;overflow:auto;z-index:20';
+            o.innerHTML = '<div style="height:2000px">speaker notes</div>'; document.body.append(o); }""")
+        two.hover("#panel")
+        toast3 = two.inner_text(".wmn-toast")
+        two.keyboard.press("ArrowDown")
+        two.wait_for_timeout(100)
+        ok(two.inner_text(".wmn-toast") == toast3, "with the pointer over a scrolling panel, ↑ ↓ are left to the panel")
+        two.mouse.move(600, 500)
+        two.keyboard.press("ArrowDown")
+        two.wait_for_timeout(100)
+        ok(two.inner_text(".wmn-toast") != toast3 or two.locator(".wmn-flash").count() > 0, "away from the panel, ↓ steps through the notes again")
         two.close()
 
         # a notes file belongs to one page: a copied page is read-only; add_notes.py gives it its own file and removes foreign links

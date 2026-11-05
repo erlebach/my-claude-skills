@@ -45,7 +45,7 @@ To set up and test a page in one step, run `check_notes.py` on it instead (see [
 
 Run `add_notes.py` again in these cases:
 
-- **The skill was improved.** Each page holds its own copy of the notes code, so a page gets new features only when you run the script on it again.
+- **The skill was improved.** Each page holds its own copy of the notes code, so a page gets new features only when the script runs on it again. To update all your pages at once, run `add_notes.py --all FOLDER`. To see which pages are out of date without changing them, add `--check`. It updates only pages that already have notes, skips `bak` and `backup` folders, and keeps each page's notes file and banner.
 - **The HTML was regenerated** and the notes code is gone. The notes file is not affected, so your notes come back.
 
 To take the notes code out of a page, run `add_notes.py --remove page.html`. The notes file stays.
@@ -100,14 +100,14 @@ The Esc key opens or closes the note under the pointer. Esc still closes the hig
 
 A slide deck has no room in its layout for notes. On a page that cannot scroll, or that hides whole slides, notes float above the page instead of joining the text flow, so they do not move the slide's content:
 
-- ← and → move between slides, as they do without notes. ↑ and ↓ step through the notes, and bring up the slide of the note they reach. In a note's text box, ↑ and ↓ move the cursor until it reaches the start or end of the text; then they step, but only within the slide, because the box must stay on screen.
+- ← and → move between slides, as they do without notes. ↑ and ↓ step through the notes, and bring up the slide of the note they reach. With the pointer or the focus in a scrolling panel of the page, such as the speaker notes, ↑ and ↓ scroll the panel instead. In a note's text box, ↑ and ↓ move the cursor until it reaches the start or end of the text; then they step, but only within the slide, because the box must stay on screen.
 - A note appears below its paragraph, only while that paragraph is on screen. It also hides behind the deck's own overlays, such as a slide overview.
 - Notes that would overlap stack below each other, so a note can sit some way below its paragraph. An orange **+** at the left of a paragraph marks the paragraph of the selected note: the note under the pointer, the note you are writing, or the note you last stepped to.
 - A long note scrolls inside its card.
 - To see what a note covers, slide the note away: drag it by its header row, footer or margins. Dragging across its text still selects the text. The note stays where you put it, also after a reload, because its position is saved in the notes file. Double-click the header row to put it back in its default place.
-- To look under a note without moving it, press Alt+H (Option+H on a Mac). The selected note disappears, and the same key brings it back. Cmd+H cannot do this: macOS uses it to hide the browser.
+- To look under a note without moving it, move the pointer over it and press H. One note at a time disappears. Press H again, with the pointer anywhere, to bring it back. Hiding a note is temporary: the note stays in the step-through lists, stepping with ↑ or ↓ shows it again, and so does a reload. With the pointer off any note, H goes to the page.
 
-The page decides this by itself when it loads. A note hides what is under it: drag it away, hide it with Alt+H, close it, or turn all notes off with Alt+N.
+The page decides this by itself when it loads. A note hides what is under it: drag it away, hide it with H, close it, or turn all notes off with N (see [Turn notes off and on](#turn-notes-off-and-on)).
 
 ### Highlights
 
@@ -163,18 +163,22 @@ The toolbar sits at the bottom of the window, as wide as the page's text column.
 To hide the toolbar, move the pointer to the bottom of the window (over the toolbar) and press Esc. To show it again, press Esc with the pointer near the bottom of the window. The page remembers the choice. From left to right the toolbar shows:
 
 1. the number of notes and highlights;
-2. the step-through list, ◀, the position, ▶, the **← → notes** / **← → page** switch, and **Close all** / **Open all**;
+2. the step-through list, ◀, the position, ▶, the **← → notes** / **← → page** switch (not on a slide deck), and **Close all** / **Open all**;
 3. the AI queue count, **All for AI** and **Clear**;
 4. **Hide resolved** (only when a card has a status);
 5. **N unattached** (only when some items lost their paragraph);
-6. **Notes off**, which turns off everything the notes add to the page (see [Turn notes off](#turn-notes-off));
+6. **Notes off**, which turns off everything the notes add to the page (see [Turn notes off and on](#turn-notes-off-and-on));
 7. the sync state.
 
-### Turn notes off
+### Turn notes off and on
 
-Press Alt+N (Option+N on a Mac), or click **Notes off** in the toolbar. Everything the notes add to the page goes away: the toolbar, the banner, the cards, the highlights, the **+** button and the selection popup. The page's own keys work as if the notes were not there, and the page layout returns to the original. Use this to present, or to work on the page. The page remembers the setting.
+Press N to turn all notes off, and N again to turn them on. The key works with the pointer anywhere, but not while you type in a text box. **Notes off** in the toolbar does the same; while notes are off, a button also appears when you move the pointer to the bottom-left corner of the window.
 
-To turn notes on again, press Alt+N, or move the pointer to the bottom-left corner of the window and click the button that appears. Nothing is lost: the notes file does not change. While you type in a text field, Alt+N types as usual. With a note open, it does not switch until you save or cancel the note.
+Notes off removes everything the notes add to the page: the toolbar, the banner, the cards, the highlights, the **+** button and the selection popup. The page's own keys work as if the notes were not there, and the layout returns to the original. Use this to present, or to work on the page. The page remembers the setting. The notes file does not change.
+
+With a note's text box open, N does not switch until you save or cancel the note.
+
+N comes before the page's own use of that key, so a page should not use N. In the `world_models` decks, O opens the speaker notes. Browser shortcuts such as Cmd+N and Cmd+H are not available to the notes, because a browser never passes them to a page.
 
 ### Sync
 
@@ -223,13 +227,14 @@ All scripts are in `~/.claude/skills/html-notes/scripts/`. They run with plain `
 
 | Script | What it does |
 |---|---|
-| `add_notes.py page.html` | Adds or updates the notes code in the page, and creates an empty notes file if there is none. `--remove` takes the code out. `--banner "<html>"` changes the banner at the top, and `--banner ""` leaves it out. |
-| `check_notes.py page.html` | Adds the notes code if the page has none, then loads the page in headless Chrome and WebKit (Safari's engine). It reports the toolbar, the counts of notes, highlights, queued and resolved items, the cards shown, and any page errors. |
+| `add_notes.py page.html` | Adds or updates the notes code in the page, and creates an empty notes file if there is none. It does not rewrite a page that is already current. `--remove` takes the code out. `--banner "<html>"` changes the banner at the top, and `--banner ""` leaves it out. Without `--banner`, a page keeps the banner it has. |
+| `add_notes.py --all FOLDER` | Updates every page in the folder and below that has notes. `--check` only lists the out-of-date pages. |
+| `check_notes.py page.html` | Adds the notes code if the page has none, or updates an old copy, then loads the page in headless Chrome and WebKit (Safari's engine). It reports the toolbar, the counts of notes, highlights, queued and resolved items, the cards shown, and any page errors. |
 | `resolve_notes.py page.html list` | Lists the queued items, each with its paragraph, its words (for a highlight or strike) and the whole conversation. `--all` lists every item. |
 | `resolve_notes.py page.html queue all` | Queues every open item. `queue ID …` queues the named items. |
 | `resolve_notes.py page.html mark ID STATUS "reply"` | Adds the AI's turn to the conversation and records the outcome. STATUS is `fixed`, `answered` or `declined`. The script sets the timestamps so that the browser does not overwrite the change, and opens the note. |
 | `resolve_notes.py page.html delete ID …` | Deletes items and records their ids in `deleted`. Use it only when the reader asks. |
-| `test_highlights.py` | Runs the feature tests (110 checks) in headless Chrome on a throwaway page. Run it after changing the notes code. |
+| `test_highlights.py` | Runs the feature tests (119 checks) in headless Chrome on a throwaway page. Run it after changing the notes code. |
 
 ## Put a page on a web server
 
@@ -253,18 +258,19 @@ If the notes do not appear:
 - **What notes attach to:** the blocks `p`, `li`, `dt`, `dd`, `h1`–`h6`, `figure`, `table`, `pre`, `blockquote`, and the classes `.eq`, `.note`, `.diffnote` and `.widget`, inside `<main>` if the page has one. To support other blocks, add them to `BLOCKS` in `assets/notes-layer.html` and run `add_notes.py` on the page again.
 - **One block per highlight:** a highlight or strike stays inside one block. A selection that runs into the next block is cut at the end of the first.
 - **No partial formulas:** you cannot select part of a formula. A highlight around inline math covers it. To comment on an equation, add a note to it.
-- **Notes cover the slide:** on a slide deck, a note hides what is under it. Drag it away, close it, or turn notes off. **Notes off** (Alt+N) also removes the notes before you present.
+- **Notes cover the slide:** on a slide deck, a note hides what is under it. Drag it away, close it, or turn notes off. **Notes off** (N) also removes the notes before you present.
 - **Hidden blocks:** to reach a note on another slide, step-through presses the deck's own arrow keys. If a deck does not change slides that way, the note stays out of reach, and a message says so.
 - **Page structure:** the page needs `</head>` and `</body>` tags. HTML fragments are refused.
 
 ## Suggested features to implement (TODO)
 
-1. **`check_notes.py` updates old notes code.** Today it adds the code only to a page that has none. It could compare a page's copy with the skill's and replace it when it is older, so that one command always gives a page the current features.
-2. **Undo for notes and highlights.** Deleting a strike has Undo and no dialog. Notes and highlights still use a confirmation dialog.
-3. **Clear out old deleted ids.** The `deleted` list grows by one id per deletion. Ids older than about 30 days could be dropped, once every tab has synced.
-4. **Choose the open/close key.** Esc opens and closes notes; a setting could let the reader pick another key.
-5. **Export the notes** as a Markdown report: each item with its paragraph, your note and the AI's reply. The notes file already holds this text.
-6. **Search and filter:** find notes by text, by highlight colour or by status.
-7. **Highlights across blocks.** One selection could make one linked highlight per block, instead of being cut at the first block's end.
-8. **Local server mode** (deferred by the author on 2026-10-21): a small local server writes the notes file, so there is no folder dialog and saving also works in Safari and Firefox.
-9. **Shared notes** (deferred by the author on 2026-10-21): several readers add notes to the same page.
+1. **Notes on any slide text.** Text in a plain `<div>` or inside an SVG cannot take a note. Decks use both.
+2. **Manual override for deck detection.** A page wrongly treated as a deck, or the reverse, cannot be corrected.
+3. **Undo for notes and highlights.** Deleting a strike has Undo and no dialog. Notes and highlights still use a confirmation dialog.
+4. **Clear out old deleted ids.** The `deleted` list grows by one id per deletion. Ids older than about 30 days could be dropped, once every tab has synced.
+5. **Choose the open/close key.** Esc opens and closes notes; a setting could let the reader pick another key.
+6. **Export the notes** as a Markdown report: each item with its paragraph, your note and the AI's reply. The notes file already holds this text.
+7. **Search and filter:** find notes by text, by highlight colour or by status.
+8. **Highlights across blocks.** One selection could make one linked highlight per block, instead of being cut at the first block's end.
+9. **Local server mode** (deferred by the author on 2026-10-21): a small local server writes the notes file, so there is no folder dialog and saving also works in Safari and Firefox.
+10. **Shared notes** (deferred by the author on 2026-10-21): several readers add notes to the same page.

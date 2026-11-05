@@ -105,23 +105,27 @@ const inside=(t,sel)=>!!(t&&t.closest&&t.closest(sel));
    is called first for every key, from a listener in <head>, so it stops the page's handlers and ours; the mouse is not touched. */
 window.wmnGuard=e=>{
   if(pressing) return;       // our own presses of the deck's keys, in showBlock
-  if(e.altKey&&e.code==='KeyN'&&!e.metaKey&&!e.ctrlKey&&!e.shiftKey&&!inside(e.target,TYPING)){    // Alt/Option+N: notes on or off, except while typing (Option+N types there)
+  /* N: all notes on or off, anywhere but in a text box. It comes before the page's handlers, so a deck must not use N itself. */
+  if(e.code==='KeyN'&&!e.metaKey&&!e.ctrlKey&&!e.altKey&&!e.shiftKey&&!inside(e.target,TYPING)){
     e.stopImmediatePropagation(); if(e.type!=='keydown') return;
     e.preventDefault();
-    if(document.querySelector('.wmn-card textarea')) say('Save or cancel the open note first');
-    else setOff(!isOff());
+    if(document.querySelector('.wmn-card textarea')) say('Save or cancel the open note first'); else setOff(!isOff());
     return;
   }
   if(isOff()) return;
   /* ↑ ↓ step through the notes on a deck, in or out of a note. In a note's text box they move the cursor until it reaches the end of the text. */
   if(DECK&&(e.key==='ArrowUp'||e.key==='ArrowDown')&&!e.metaKey&&!e.ctrlKey&&!e.altKey&&!e.shiftKey){
     const t=e.target, box=inside(t,'.wmn-card textarea'), down=e.key==='ArrowDown';
-    const go=box?(down?t.selectionEnd===t.value.length:t.selectionStart===0)&&t.selectionStart===t.selectionEnd:!inside(t,OWNKEYS);
+    const go=box?(down?t.selectionEnd===t.value.length:t.selectionStart===0)&&t.selectionStart===t.selectionEnd:!inside(t,OWNKEYS)&&!inPanel(t);
     if(go){ e.stopImmediatePropagation(); if(e.type==='keydown'){ e.preventDefault(); jump(down?1:-1); } return; }
   }
-  if(DECK&&e.altKey&&e.code==='KeyH'&&!e.metaKey&&!e.ctrlKey&&!e.shiftKey&&!inside(e.target,TYPING)){    // Alt/Option+H: hide the selected note to see under it
-    e.stopImmediatePropagation(); if(e.type!=='keydown') return;
-    e.preventDefault(); peek(); return;
+  /* H: hide the note under the pointer, to see what it covers; H again shows it. Anywhere else, the page gets the key. */
+  if(e.code==='KeyH'&&!e.metaKey&&!e.ctrlKey&&!e.altKey&&!e.shiftKey&&!inside(e.target,TYPING)){
+    const over=document.querySelector('.wmn-card:hover');
+    if(over||peekId){
+      e.stopImmediatePropagation(); if(e.type!=='keydown') return;
+      e.preventDefault(); peek(over); return;
+    }
   }
   const card=inside(e.target,'.wmn-card')&&e.target.closest('.wmn-card'), mod=e.metaKey||e.ctrlKey, kd=e.type==='keydown', save=e.key==='Enter'&&mod;
   const ta=(card&&card.querySelector('textarea'))||(curTa&&curTa.isConnected?curTa:document.querySelector('.wmn-card textarea'));
@@ -135,6 +139,14 @@ window.wmnGuard=e=>{
   if(kd&&(save||(card&&e.key==='Escape'))){ if(save) e.preventDefault(); ta.wmnKey(e); return; }   // Cmd+Enter works even with the focus outside the note
   if(!card&&e.key!=='Tab'&&!mod&&!e.altKey) e.preventDefault();   // focus moved away by the mouse: no scrolling or typing out there; browser shortcuts stay
 };
+/* A scrolling panel of the page (a deck's speaker notes) keeps ↑ ↓, if the focus or the pointer is in it. A scrolling slide does not:
+   it holds blocks the notes attach to. */
+function inPanel(t){
+  const over=[...document.querySelectorAll(':hover')].pop();
+  for(const x of [t,over]) for(let e=x;e&&e.nodeType===1&&e!==document.body;e=e.parentElement)
+    if(!e.closest(OURS)&&/auto|scroll/.test(getComputedStyle(e).overflowY)&&e.scrollHeight>e.clientHeight&&!LIST.some(b=>e.contains(b))) return true;
+  return false;
+}
 let pressing=false, curTa=null;       // the note text box opened last
 const COLORS={y:'rgba(255,214,0,.45)',g:'rgba(110,205,90,.4)',b:'rgba(90,170,255,.38)',p:'rgba(255,110,170,.38)'};
 const canPaint=!!(window.CSS&&CSS.highlights&&window.Highlight);
@@ -240,11 +252,10 @@ const layer=el('div','wmn-layer'), markEl=el('div','wmn-mark','+');
 markEl.setAttribute('aria-hidden','true');
 /* The selected note: under the pointer, else being written, else the one last stepped to. An orange + marks its block. */
 const activeId=()=>{ const t=layer.querySelector('textarea'), c=hoverId&&layer.querySelector('.wmn-card[data-id="'+hoverId+'"]'); return c?hoverId:t?t.closest('.wmn-card').dataset.id:stepId; };
-function peek(){
+function peek(over){
   if(peekId){ peekId=null; say('Note shown'); return; }
-  const id=activeId();
-  if(!id||!layer.querySelector('.wmn-card[data-id="'+id+'"]')){ say('Move the pointer over a note first'); return; }
-  peekId=id; say('Note hidden: Alt+H (Option+H) shows it');
+  if(!DECK||!over||!layer.contains(over)) return;
+  peekId=over.dataset.id; say('Note hidden: H shows it');
 }
 const isVis=b=>b.checkVisibility?b.checkVisibility({checkVisibilityCSS:true}):b.getClientRects().length>0;
 const topOf=e=>{ while(e&&e.parentElement&&e.parentElement!==document.body) e=e.parentElement; return e; };
@@ -521,8 +532,8 @@ const orphans=()=>data.notes.filter(n=>!where.has(n.id));
 /* ---- toolbar and unattached-notes panel ---- */
 const bar=el('div','wmn-bar'), info=el('span'), status=el('span'), pnl=el('div','wmn-panel');
 const isOff=()=>document.body.classList.contains('wmn-hide');
-function setOff(v){ document.body.classList.toggle('wmn-hide',v); lsSet(LSHIDE,v?'1':null); picking=null; showDiff(null); bar_(); paint(); say(v?'Notes off: Alt+N (Option+N) turns them on':'Notes on'); }
-const hideBtn=btn('Notes off',()=>setOff(true),true); hideBtn.title='Turn off everything the notes add to this page. Alt+N (Option+N) turns it back on.';
+function setOff(v){ document.body.classList.toggle('wmn-hide',v); lsSet(LSHIDE,v?'1':null); picking=null; showDiff(null); bar_(); paint(); say(v?'Notes off: N turns them on':'Notes on'); }
+const hideBtn=btn('Notes off',()=>setOff(true),true); hideBtn.title='Turn off everything the notes add to this page. N turns it off and on.';
 const orphBtn=btn('',()=>{ pnl.style.display=pnl.style.display==='block'?'none':'block'; panel(); },true);
 const aiInfo=el('span'), doneBtn=btn('',()=>{ document.body.classList.toggle('wmn-hide-done'); lsSet(LSDONE,document.body.classList.contains('wmn-hide-done')?'1':null); bar_(); paint(); },true);
 const allBtn=btn('All for AI',()=>{ const open=data.notes.filter(n=>!n.ai&&!n.status); if(!open.length) return; for(const n of open){ n.ai=true; n.updated=now(); } changed(); rerender(); },true);
@@ -739,7 +750,7 @@ function init(){
   bar_(); sync('auto');
   window.wmnNotes=()=>data;   // for check_notes.py and debugging
   document.body.append(toast);
-  const onBtn=btn('Turn notes on (Alt+N)',()=>setOff(false)); onBtn.className='wmn-on'; document.body.append(onBtn);
+  const onBtn=btn('Turn notes on (N)',()=>setOff(false)); onBtn.className='wmn-on'; document.body.append(onBtn);
   /* Esc opens or closes the note under the pointer. Esc keeps its other jobs first (popup, typing, Reattach);
      with no note under the pointer, the page gets the key. */
   // capture on window: the page's own handlers cannot hide the pointer from us

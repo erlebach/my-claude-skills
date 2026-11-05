@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Load an HTML page with the notes layer in headless Chrome and WebKit (Safari's engine)
 and report whether the layer started, how many notes loaded, and any page errors.
-A page without the layer gets it first (add_notes.py), so this works on any page.
+The page first gets the current layer (add_notes.py), so this works on any page, and tests the current code.
 
     check_notes.py page.html
 
@@ -53,11 +53,10 @@ def check(pw, name, launch, url):
 
 def main():
     page = Path(sys.argv[1]).resolve()
-    if "<!-- html-notes:" not in page.read_text(encoding="utf-8", errors="replace"):
-        print(f"{page.name} has no notes layer: adding it with add_notes.py", flush=True)
-        r = subprocess.run([sys.executable, str(Path(__file__).with_name("add_notes.py")), str(page)])
-        if r.returncode:
-            sys.exit(r.returncode)
+    # add the layer if missing, bring an old copy up to date, change nothing if current
+    r = subprocess.run([sys.executable, str(Path(__file__).with_name("add_notes.py")), str(page)])
+    if r.returncode:
+        sys.exit(r.returncode)
     url = page.as_uri()
     with sync_playwright() as pw:
         ok = check(pw, "Chrome", lambda: pw.chromium.launch(channel="chrome"), url)
