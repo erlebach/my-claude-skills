@@ -46,6 +46,10 @@ def main():
     notes = page.with_name(page.stem + ".notes.js")
     had = "<!-- html-notes:" in html
     html = strip(html)
+    # a notes file is linked only here: a hand-written or copied tag would make two pages share one notes file
+    html, stray = re.subn(r'<script\b[^>]*\bsrc="[^"]*\.notes\.js"[^>]*>\s*</script>\n?', "", html, flags=re.I)
+    if stray:
+        print(f"removed {stray} hand-written notes script tag(s) from {page}")
     if not had and 'class="wmn-banner"' in html:
         sys.exit(f"{page}: has an unmarked notes layer from before this script; remove it by hand first.")
 

@@ -35,6 +35,14 @@
 .wmn-panel .wmn-card{margin:0 0 10px}
 .wmn-old{font-size:.75rem;color:var(--wmn-ink2);margin-bottom:4px}
 .wmn-card.wmn-float{position:fixed;z-index:2147483002;box-sizing:border-box;width:min(560px,calc(100vw - 24px));margin:0;box-shadow:0 4px 16px rgba(0,0,0,.25)}
+.wmn-layer>.wmn-card{position:fixed;left:0;top:0;box-sizing:border-box;width:min(480px,calc(100vw - 24px));max-height:60vh;overflow:auto;margin:0;box-shadow:0 2px 10px rgba(0,0,0,.22)}
+.wmn-layer>.wmn-card.wmn-away{display:none}
+.wmn-layer>.wmn-card{cursor:move}
+.wmn-layer>.wmn-card.wmn-peek{visibility:hidden}
+.wmn-mark{position:fixed;display:none;z-index:2147483000;width:22px;height:22px;border-radius:50%;background:#E8590C;color:#fff;font:600 16px/22px "Avenir Next",Avenir,Helvetica,Arial,sans-serif;text-align:center;box-shadow:0 0 0 3px rgba(232,89,12,.3);pointer-events:none}
+.wmn-layer :is(.wmn-text,.wmn-reply,.wmn-quote,.wmn-old,textarea){cursor:auto}
+.wmn-layer .wmn-head{user-select:none;-webkit-user-select:none;touch-action:none}
+body.wmn-drag,body.wmn-drag *{user-select:none!important;-webkit-user-select:none!important;cursor:move!important}
 .wmn-head{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:4px}
 .wmn-card.wmn-closed{padding:3px 10px}
 .wmn-card.wmn-closed .wmn-head{margin-bottom:0}
@@ -61,6 +69,11 @@ button.wmn-tag{cursor:pointer;background:#fff;font-family:inherit;line-height:in
 .wmn-card.wmn-queued{border-left-color:#3B5BA9}
 .wmn-card.wmn-done{border-color:var(--wmn-rule);border-left-color:#8A9A9F}
 body.wmn-hide .wmn-card:not(.wmn-panel .wmn-card){display:none}
+/* Notes off: everything the layer adds to the page is gone; only the corner button, visible on hover, remains */
+body.wmn-hide :is(.wmn-mark,.wmn-bar,.wmn-banner,.wmn-add,.wmn-pop,.wmn-pad,.wmn-panel,.wmn-dialog){display:none!important}
+.wmn-on{display:none;position:fixed;left:0;bottom:0;z-index:2147483001;font:.75rem "Avenir Next",Avenir,Helvetica,Arial,sans-serif;color:#fff;background:#1C2B33;border:0;padding:4px 10px;opacity:0;cursor:pointer}
+.wmn-on:hover,.wmn-on:focus-visible{opacity:1}
+body.wmn-hide .wmn-on{display:block}
 body.wmn-hide-done .wmn-card.wmn-done:not(.wmn-panel .wmn-card){display:none}
 .wmn-target{outline:2px dashed #C9932B;outline-offset:2px}
 .wmn-pop{position:absolute;z-index:2147483002;display:none;gap:6px;align-items:center;background:#fff;border:1px solid var(--wmn-rule);box-shadow:0 2px 8px rgba(0,0,0,.18);padding:4px 6px}
@@ -69,7 +82,7 @@ body.wmn-hide-done .wmn-card.wmn-done:not(.wmn-panel .wmn-card){display:none}
 .wmn-quote{font-size:.8rem;font-style:italic;color:var(--wmn-ink2);border-left:4px solid;padding-left:8px;margin-bottom:6px}
 .wmn-toast{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:2147483003;font-family:var(--wmn-sans);font-size:.85rem;background:var(--wmn-ink);color:#fff;padding:4px 12px;opacity:0;transition:opacity .3s;pointer-events:none}
 .wmn-toast.on{opacity:.92}
-@media print{.wmn-banner,.wmn-add,.wmn-bar,.wmn-panel,.wmn-dialog,.wmn-pop,.wmn-toast,.wmn-pad{display:none!important}}
+@media print{.wmn-layer,.wmn-mark,.wmn-on,.wmn-banner,.wmn-add,.wmn-bar,.wmn-panel,.wmn-dialog,.wmn-pop,.wmn-toast,.wmn-pad{display:none!important}}
 </style>
 <script>
 (function(){
@@ -77,8 +90,12 @@ body.wmn-hide-done .wmn-card.wmn-done:not(.wmn-panel .wmn-card){display:none}
 const FILE='__NOTES_FILE__', HTML='__HTML_FILE__';
 const KEY=location.pathname, DIRKEY='dir:'+KEY.replace(/[^/]*$/,''), LS='wmn-pending:'+KEY, LSHIDE='wmn-hide:'+KEY, LSDONE='wmn-hide-done:'+KEY, LSKEYS='wmn-keys:'+KEY, LSBAR='wmn-bar-off:'+KEY, LSNOASK='wmn-no-ask:'+KEY;
 const BLOCKS='p,li,dt,dd,h1,h2,h3,h4,h5,h6,.eq,figure,table,pre,blockquote,.note,.diffnote,.widget';
-const OURS='.wmn-card,.wmn-bar,.wmn-panel,.wmn-banner,.wmn-add,.wmn-pop,.wmn-toast,.wmn-pad';
-const canSave=!!window.showDirectoryPicker;
+const OURS='.wmn-mark,.wmn-layer,.wmn-card,.wmn-bar,.wmn-panel,.wmn-banner,.wmn-add,.wmn-pop,.wmn-toast,.wmn-pad';
+/* A notes file belongs to one page, and only add_notes.py links them. This page must be the one the layer was made for,
+   and must load no other notes file; otherwise it stays read-only, so it can never write over another page's notes. */
+const hereFile=decodeURIComponent(location.pathname.split('/').pop());
+const foreign=(!!hereFile&&hereFile!==HTML)||FILE.replace(/\.notes\.js$/,'')!==HTML.replace(/\.[^.]*$/,'')||[...document.querySelectorAll('script[src$=".notes.js"]')].some(x=>decodeURIComponent(x.getAttribute('src'))!==FILE);
+const canSave=!!window.showDirectoryPicker&&!foreign;
 /* Where keys belong to the page: TYPING for Esc (text entry only; a focused slider or button must not block Esc),
    OWNKEYS for the arrows (also sliders, which use them, and anything inside an interactive widget) */
 const TYPING='textarea,select,[contenteditable=""],[contenteditable="true"],input:not([type=range]):not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]):not([type=reset]):not([type=color]):not([type=file])';
@@ -87,6 +104,25 @@ const inside=(t,sel)=>!!(t&&t.closest&&t.closest(sel));
 /* While the reader is in a note (its text box is open, or the focus is on the note), keys act on that note only. The guard
    is called first for every key, from a listener in <head>, so it stops the page's handlers and ours; the mouse is not touched. */
 window.wmnGuard=e=>{
+  if(pressing) return;       // our own presses of the deck's keys, in showBlock
+  if(e.altKey&&e.code==='KeyN'&&!e.metaKey&&!e.ctrlKey&&!e.shiftKey&&!inside(e.target,TYPING)){    // Alt/Option+N: notes on or off, except while typing (Option+N types there)
+    e.stopImmediatePropagation(); if(e.type!=='keydown') return;
+    e.preventDefault();
+    if(document.querySelector('.wmn-card textarea')) say('Save or cancel the open note first');
+    else setOff(!isOff());
+    return;
+  }
+  if(isOff()) return;
+  /* ↑ ↓ step through the notes on a deck, in or out of a note. In a note's text box they move the cursor until it reaches the end of the text. */
+  if(DECK&&(e.key==='ArrowUp'||e.key==='ArrowDown')&&!e.metaKey&&!e.ctrlKey&&!e.altKey&&!e.shiftKey){
+    const t=e.target, box=inside(t,'.wmn-card textarea'), down=e.key==='ArrowDown';
+    const go=box?(down?t.selectionEnd===t.value.length:t.selectionStart===0)&&t.selectionStart===t.selectionEnd:!inside(t,OWNKEYS);
+    if(go){ e.stopImmediatePropagation(); if(e.type==='keydown'){ e.preventDefault(); jump(down?1:-1); } return; }
+  }
+  if(DECK&&e.altKey&&e.code==='KeyH'&&!e.metaKey&&!e.ctrlKey&&!e.shiftKey&&!inside(e.target,TYPING)){    // Alt/Option+H: hide the selected note to see under it
+    e.stopImmediatePropagation(); if(e.type!=='keydown') return;
+    e.preventDefault(); peek(); return;
+  }
   const card=inside(e.target,'.wmn-card')&&e.target.closest('.wmn-card'), mod=e.metaKey||e.ctrlKey, kd=e.type==='keydown', save=e.key==='Enter'&&mod;
   const ta=(card&&card.querySelector('textarea'))||(curTa&&curTa.isConnected?curTa:document.querySelector('.wmn-card textarea'));
   if(!ta){
@@ -99,7 +135,7 @@ window.wmnGuard=e=>{
   if(kd&&(save||(card&&e.key==='Escape'))){ if(save) e.preventDefault(); ta.wmnKey(e); return; }   // Cmd+Enter works even with the focus outside the note
   if(!card&&e.key!=='Tab'&&!mod&&!e.altKey) e.preventDefault();   // focus moved away by the mouse: no scrolling or typing out there; browser shortcuts stay
 };
-let curTa=null;       // the note text box opened last
+let pressing=false, curTa=null;       // the note text box opened last
 const COLORS={y:'rgba(255,214,0,.45)',g:'rgba(110,205,90,.4)',b:'rgba(90,170,255,.38)',p:'rgba(255,110,170,.38)'};
 const canPaint=!!(window.CSS&&CSS.highlights&&window.Highlight);
 const DELIMS=[{left:'$$',right:'$$',display:true},{left:'\\[',right:'\\]',display:true},{left:'\\(',right:'\\)',display:false},{left:'$',right:'$',display:false}];
@@ -197,7 +233,87 @@ const shown=n=>!!(n.text||n.status||n.resolution||n.was||(n.ai&&!n.strike));   /
 const quoteOf=n=>{ if(!n.hl) return []; const q=n.hl.quote, d=el('div','wmn-quote','“'+(q.length>200?q.slice(0,200)+'…':q)+'”'); d.style.borderColor=n.strike?'#C0392B':COLORS[n.hl.color]||COLORS.y; if(n.strike) d.style.textDecoration='line-through'; return [d]; };
 
 /* ---- rendering ---- */
+/* A slide deck (a page that cannot scroll, or that hides whole slides): the layout has no room for cards, so they float
+   above the page, below their block, in a layer of their own, and show only while the block is on screen */
+let DECK=false;
+const layer=el('div','wmn-layer'), markEl=el('div','wmn-mark','+');
+markEl.setAttribute('aria-hidden','true');
+/* The selected note: under the pointer, else being written, else the one last stepped to. An orange + marks its block. */
+const activeId=()=>{ const t=layer.querySelector('textarea'), c=hoverId&&layer.querySelector('.wmn-card[data-id="'+hoverId+'"]'); return c?hoverId:t?t.closest('.wmn-card').dataset.id:stepId; };
+function peek(){
+  if(peekId){ peekId=null; say('Note shown'); return; }
+  const id=activeId();
+  if(!id||!layer.querySelector('.wmn-card[data-id="'+id+'"]')){ say('Move the pointer over a note first'); return; }
+  peekId=id; say('Note hidden: Alt+H (Option+H) shows it');
+}
+const isVis=b=>b.checkVisibility?b.checkVisibility({checkVisibilityCSS:true}):b.getClientRects().length>0;
+const topOf=e=>{ while(e&&e.parentElement&&e.parentElement!==document.body) e=e.parentElement; return e; };
+/* A block shows if any part of it is in the window and not under an overlay of the page. Five points, so that a small
+   element over its centre (a deck's navigation buttons) does not hide its note, while a full overlay does. */
+function shows(b,r){
+  const L=Math.max(r.left,0), R=Math.min(r.right,innerWidth), T=Math.max(r.top,0), B=Math.min(r.bottom,innerHeight);
+  if(R<=L||B<=T) return false;
+  const dx=(R-L)/4, dy=(B-T)/4, tb=topOf(b);
+  for(const [x,y] of [[L+2*dx,T+2*dy],[L+dx,T+dy],[R-dx,T+dy],[L+dx,B-dy],[R-dx,B-dy]]){
+    const h=document.elementFromPoint(x,y);
+    if(h&&(h.closest(OURS)||topOf(h)===tb)) return true;
+  }
+  return false;
+}
+function layout(){
+  const placed=[], limit=bar.isConnected&&!bar.classList.contains('wmn-off')&&bar.getBoundingClientRect().top>0?bar.getBoundingClientRect().top-4:innerHeight-4, on=[];
+  for(const c of layer.children){
+    const b=where.get(c.dataset.id), r=b&&isVis(b)?b.getBoundingClientRect():null;
+    // an overlay of the page (a deck's slide overview, a lightbox) hides the block, and so its note
+    const seen=r&&shows(b,r);
+    c.classList.toggle('wmn-away',!seen);
+    c.classList.toggle('wmn-peek',c.dataset.id===peekId);
+    if(seen) on.push([c,r]);
+  }
+  const noteOf=c=>data.notes.find(n=>n.id===c.dataset.id);
+  on.sort((x,y)=>(noteOf(x[0])||{}).pos&&!(noteOf(y[0])||{}).pos?-1:!(noteOf(x[0])||{}).pos&&(noteOf(y[0])||{}).pos?1:x[1].bottom-y[1].bottom);
+  for(const [c,r] of on){
+    const w=c.offsetWidth, h=c.offsetHeight, n=noteOf(c), pos=n&&n.pos;
+    let x=Math.max(8,Math.min(pos?pos.x*innerWidth:r.left,innerWidth-w-8)), y=pos?pos.y*innerHeight:r.bottom+4;
+    // a note the reader dragged stays where it was put; the others avoid it and each other (they are in order)
+    if(!pos) for(const q of placed) if(x<q.x+q.w&&q.x<x+w&&y<q.y+q.h+4&&q.y<y+h) y=q.y+q.h+4;
+    y=Math.max(8,Math.min(y,limit-h));
+    placed.push({x,y,w,h});
+    if(c.style.left!==x+'px') c.style.left=x+'px';
+    if(c.style.top!==y+'px') c.style.top=y+'px';
+  }
+  const id=activeId(), mb=id&&where.get(id), mr=mb&&isVis(mb)?mb.getBoundingClientRect():null, sel=mr&&shows(mb,mr);
+  markEl.style.display=sel?'block':'none';
+  if(sel){ markEl.style.left=Math.max(2,mr.left-28)+'px'; markEl.style.top=mr.top+'px'; }
+}
+/* Drag a floating note by its header, footer or margins; its text stays selectable. The position is a fraction of the
+   window, saved in the notes file on drop. A double click on the header row puts the note back in its default place. */
+function dragging(){
+  const TEXT='button,textarea,a,select,input,.wmn-text,.wmn-reply,.wmn-quote,.wmn-old';
+  layer.addEventListener('pointerdown',e=>{
+    if(e.button||inside(e.target,TEXT)) return;
+    const c=e.target.closest('.wmn-card'), n=c&&data.notes.find(x=>x.id===c.dataset.id); if(!n) return;
+    const r=c.getBoundingClientRect(), dx=e.clientX-r.left, dy=e.clientY-r.top, x0=e.clientX, y0=e.clientY, ta=c.querySelector('textarea');
+    let moved=false; document.body.classList.add('wmn-drag');
+    const mv=v=>{ if(!moved&&Math.hypot(v.clientX-x0,v.clientY-y0)<4) return; moved=true; n.pos={x:+((v.clientX-dx)/innerWidth).toFixed(4),y:+((v.clientY-dy)/innerHeight).toFixed(4)}; };
+    const up=()=>{
+      window.removeEventListener('pointermove',mv); window.removeEventListener('pointerup',up); document.body.classList.remove('wmn-drag');
+      if(ta&&ta.isConnected) ta.focus({preventScroll:true});
+      if(!moved) return;
+      const eat=v=>{ v.stopPropagation(); v.preventDefault(); };      // the click that ends a drag must not open or close the note
+      layer.addEventListener('click',eat,true); setTimeout(()=>layer.removeEventListener('click',eat,true),50);
+      n.updated=now(); changed();
+    };
+    window.addEventListener('pointermove',mv); window.addEventListener('pointerup',up);
+  });
+  layer.addEventListener('dblclick',e=>{
+    if(!inside(e.target,'.wmn-head')||inside(e.target,TEXT+',.wmn-preview')) return;
+    const c=e.target.closest('.wmn-card'), n=c&&data.notes.find(x=>x.id===c.dataset.id);
+    if(n&&n.pos){ delete n.pos; n.updated=now(); changed(); }
+  });
+}
 function after(b,c){   // below the block and its earlier cards; a note on a <dt> goes after its <dd>, so a term and its definition stay together
+  if(DECK){ layer.append(c); layout(); return; }
   let r=b;
   for(let x=r.nextElementSibling;x&&(x.classList.contains('wmn-card')||(b.tagName==='DT'&&x.tagName==='DD'));x=r.nextElementSibling) r=x;
   r.after(c);
@@ -297,6 +413,7 @@ function edit(n,c,isNew,turn){
   ta.wmnKey=e=>{ if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)) (e.shiftKey&&forAI||ok).click(); if(e.key==='Escape') no.click(); };   // called by wmnGuard
   c.classList.remove('wmn-closed');
   c.replaceChildren(...quoteOf(n),...(turn?thread(turns(n),turn):[]),ta,m);
+  if(DECK) layout();
   const B=getComputedStyle(document.body).overflow, H=getComputedStyle(document.documentElement).overflow;
   if(B!=='hidden'&&H!=='hidden') c.scrollIntoView({block:'nearest'});
   const r0=ok.getBoundingClientRect(), hit=document.elementFromPoint(r0.left+r0.width/2,r0.top+r0.height/2);
@@ -403,7 +520,9 @@ const orphans=()=>data.notes.filter(n=>!where.has(n.id));
 
 /* ---- toolbar and unattached-notes panel ---- */
 const bar=el('div','wmn-bar'), info=el('span'), status=el('span'), pnl=el('div','wmn-panel');
-const hideBtn=btn('',()=>{ document.body.classList.toggle('wmn-hide'); lsSet(LSHIDE,document.body.classList.contains('wmn-hide')?'1':null); bar_(); paint(); },true);
+const isOff=()=>document.body.classList.contains('wmn-hide');
+function setOff(v){ document.body.classList.toggle('wmn-hide',v); lsSet(LSHIDE,v?'1':null); picking=null; showDiff(null); bar_(); paint(); say(v?'Notes off: Alt+N (Option+N) turns them on':'Notes on'); }
+const hideBtn=btn('Notes off',()=>setOff(true),true); hideBtn.title='Turn off everything the notes add to this page. Alt+N (Option+N) turns it back on.';
 const orphBtn=btn('',()=>{ pnl.style.display=pnl.style.display==='block'?'none':'block'; panel(); },true);
 const aiInfo=el('span'), doneBtn=btn('',()=>{ document.body.classList.toggle('wmn-hide-done'); lsSet(LSDONE,document.body.classList.contains('wmn-hide-done')?'1':null); bar_(); paint(); },true);
 const allBtn=btn('All for AI',()=>{ const open=data.notes.filter(n=>!n.ai&&!n.status); if(!open.length) return; for(const n of open){ n.ai=true; n.updated=now(); } changed(); rerender(); },true);
@@ -412,7 +531,7 @@ allBtn.title='Queue every open note and highlight for the AI'; clrBtn.title='Tak
 /* step-through: ◀ ▶ visit the items of the chosen list in page order, and flash each one */
 const MODES={all:['All',n=>true],ai:['For AI',n=>n.ai],review:['To review',n=>n.status&&!n.reviewed],changed:['Text changed',n=>n.was]};
 const navSel=el('select','wmn-btn alt'), navPos=el('span'), prevB=btn('◀',()=>jump(-1),true), nextB=btn('▶',()=>jump(1),true);
-let mode='all', cur=-1, hoverId=null;   // hoverId: the note under the pointer
+let mode='all', cur=-1, hoverId=null, stepId=null, peekId=null;   // hoverId: the note under the pointer
 navSel.setAttribute('aria-label','Step through'); prevB.title='Previous'; nextB.title='Next';
 navSel.onchange=()=>{ mode=navSel.value; cur=-1; navPos.textContent=''; navSel.blur(); };   // blur: the arrow keys go back to stepping
 /* The ← → keys step too, so the toolbar need not be on screen. A page that uses the arrows itself (a slide deck)
@@ -422,14 +541,44 @@ const keysBtn=btn('',()=>{ keysOn=!keysOn; lsSet(LSKEYS,keysOn?null:'off'); bar_
 keysBtn.title='Left and right arrow keys: step through the notes, or leave them to the page';
 const toast=el('div','wmn-toast');
 function say(t){ toast.textContent=t; toast.classList.add('on'); clearTimeout(toastT); toastT=setTimeout(()=>toast.classList.remove('on'),1500); }
-function navEl(n){ const c=ROOT.querySelector('.wmn-card[data-id="'+n.id+'"]'); return c&&c.offsetParent?c:where.get(n.id); }
-function navItems(m){ const f=MODES[m||mode][1]; return data.notes.filter(n=>where.has(n.id)&&f(n)).map(navEl).sort((a,b)=>a===b?0:a.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING?-1:1); }
+function navEl(n){ const c=document.querySelector('.wmn-card[data-id="'+n.id+'"]'); return c&&c.getClientRects().length?c:where.get(n.id); }
+function navItems(m){       // the items of a list in page order. Deck cards live in their own layer, so there the order is that of their blocks.
+  const f=MODES[m||mode][1], key=n=>DECK?where.get(n.id):navEl(n);
+  return data.notes.filter(n=>where.has(n.id)&&f(n)).sort((a,b)=>{ const x=key(a), y=key(b); return x===y?0:x.compareDocumentPosition(y)&Node.DOCUMENT_POSITION_FOLLOWING?-1:1; });
+}
+/* Bring up the slide that holds a block, by pressing the deck's own arrow keys. Decks differ, so this asks nothing of them. */
+function showBlock(b){
+  const first=()=>LIST.find(isVis); let stuck=0;
+  pressing=true;
+  try{
+    for(let i=0;i<300&&stuck<3&&!isVis(b);i++){
+      const f=first(), key=!f||(f.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING)?'ArrowRight':'ArrowLeft';
+      for(const t of ['keydown','keyup']) document.body.dispatchEvent(new KeyboardEvent(t,{key,code:key,bubbles:true,cancelable:true}));
+      stuck=first()===f?stuck+1:0;
+    }
+  }finally{ pressing=false; }
+  return isVis(b);
+}
+/* A slide with its own scrollbar: scroll it to the block. The page itself never scrolls on a deck. */
+function reveal(b){
+  for(let e=b.parentElement;e&&e!==document.body;e=e.parentElement){
+    if(!/auto|scroll/.test(getComputedStyle(e).overflowY)||e.scrollHeight<=e.clientHeight) continue;
+    const r=b.getBoundingClientRect(), q=e.getBoundingClientRect();
+    if(r.top<q.top||r.bottom>q.bottom) e.scrollTop+=r.top-q.top-q.height/3;
+    return;
+  }
+}
 function jump(d){
   const L=navItems(); if(!L.length){ navPos.textContent='0/0'; say(MODES[mode][0]+': none'); return; }
-  cur=cur<0?(d>0?0:L.length-1):(Math.min(cur,L.length-1)+d+L.length)%L.length;
-  const e=L[cur]; e.scrollIntoView({block:'center'});
+  const k=cur<0?(d>0?0:L.length-1):(Math.min(cur,L.length-1)+d+L.length)%L.length, n=L[k], b=where.get(n.id);
+  if(DECK&&layer.querySelector('textarea')&&!isVis(b)){ say('Save or cancel the open note to go to another slide'); return; }
+  cur=k;
+  if(DECK){ if(!showBlock(b)) say('That note is on a slide that could not be opened'); else reveal(b); layout(); }
+  const e=navEl(n); if(!DECK) e.scrollIntoView({block:'center'});
+  stepId=n.id; peekId=null;
   e.classList.remove('wmn-flash'); void e.offsetWidth; e.classList.add('wmn-flash'); setTimeout(()=>e.classList.remove('wmn-flash'),1700);
-  navPos.textContent=(cur+1)+'/'+L.length; say(MODES[mode][0]+': '+(cur+1)+' / '+L.length);
+  navPos.textContent=(cur+1)+'/'+L.length;
+  if(isVis(b)) say(MODES[mode][0]+': '+(cur+1)+' / '+L.length);
 }
 /* Open all / Close all: one button; "Close all" while any note on the page is open */
 const cards=()=>data.notes.filter(n=>where.has(n.id)&&shown(n));
@@ -444,11 +593,10 @@ function bar_(){
   const o=orphans().length;
   const h=data.notes.filter(n=>n.hl).length;
   info.textContent='Notes: '+data.notes.filter(n=>n.text).length+(h?' · Highlights: '+h:'');
-  hideBtn.textContent=document.body.classList.contains('wmn-hide')?'Show':'Hide';
   orphBtn.textContent=o+' unattached'; orphBtn.style.display=o?'':'none';
   navSel.replaceChildren(...Object.entries(MODES).map(([k,[l]])=>{ const o=el('option','',l+' ('+navItems(k).length+')'); o.value=k; o.selected=k===mode; return o; }));
   const q=data.notes.filter(n=>n.ai).length, d=data.notes.filter(n=>n.status).length;
-  keysBtn.textContent='← → '+(keysOn?'notes':'page');
+  keysBtn.textContent='← → '+(keysOn?'notes':'page'); keysBtn.style.display=DECK?'none':'';   // on a deck, ← → always belong to the slides
   const C=cards(); allBtn2.textContent=C.some(n=>!n.collapsed)?'Close all':'Open all'; allBtn2.style.display=C.length?'':'none';
   aiInfo.textContent='For AI: '+q; allBtn.style.display=canSave?'':'none'; clrBtn.style.display=canSave&&q?'':'none';
   doneBtn.textContent=(document.body.classList.contains('wmn-hide-done')?'Show':'Hide')+' resolved ('+d+')'; doneBtn.style.display=d?'':'none';
@@ -457,6 +605,7 @@ function bar_(){
 function show(state,msg){
   const S={
     synced:['✓ Synced',''], saving:['Saving…',''], readonly:['Read-only here: edit notes in Chrome',''],
+    foreign:['⚠ Read-only: this page has no notes file of its own. Run add_notes.py on it','Its notes code was made for '+HTML+' and links '+FILE+'. A notes file belongs to one page.'],
     connect:['⚠ Not synced: click to choose the folder of this page','Your notes are kept in this browser until Chrome may write '+FILE+'. Choose the folder that contains '+HTML+'; Chrome remembers it.'],
     wrongdir:['⚠ That folder does not contain '+HTML+': click to choose again',''],
     allow:['⚠ Not synced: click to let Chrome write the notes file','Chrome asks again after a restart unless you choose "Allow on every visit". Your notes are kept in this browser until then.'],
@@ -497,7 +646,7 @@ function merge(a,b){
 }
 function rerender(){
   if(document.querySelector('.wmn-card textarea')) return;          // never pull a note away while it is being edited
-  ROOT.querySelectorAll('.wmn-card').forEach(c=>c.remove()); where.clear();
+  document.querySelectorAll('.wmn-card:not(.wmn-panel .wmn-card)').forEach(c=>c.remove()); where.clear();
   if(place()){ data.updated=now(); dirty=true; }
   panel();
 }
@@ -513,7 +662,7 @@ async function writeDisk(){
 /* mode: 'auto' (no click: may only read and write), 'edit' (after a click: may ask for permission),
    'pick' (a click on the indicator or dialog: may also open the folder picker) */
 async function sync(mode){
-  if(!canSave) return show('readonly');
+  if(!canSave) return show(foreign?'foreign':'readonly');
   if(busy){ again=true; return; } busy=true;
   try{
     if(!fileH&&!dirH){ const h=await idb(false,DIRKEY)||await idb(false,KEY); if(h&&h.kind==='directory') dirH=h; else if(h) fileH=h; }
@@ -563,6 +712,14 @@ function init(){
   if(pending){ try{ const p=JSON.parse(pending); if((p.updated||'')>(data.updated||'')){ data=merge(p,data); dirty=true; } }catch(e){} }
   if(lsGet(LSHIDE)) document.body.classList.add('wmn-hide');
   if(lsGet(LSDONE)) document.body.classList.add('wmn-hide-done');
+  const B0=getComputedStyle(document.body).overflow, H0=getComputedStyle(document.documentElement).overflow, D=document.documentElement;
+  DECK=B0==='hidden'||H0==='hidden'||(D.scrollHeight<=innerHeight+1&&[...ROOT.querySelectorAll(BLOCKS)].some(b=>!b.closest(OURS)&&!isVis(b)));
+  if(DECK){
+    document.body.append(layer);
+    (function tick(){ layout(); requestAnimationFrame(tick); })();                 // keep the notes with their blocks
+    dragging();
+    document.body.append(markEl);
+  }
   const moved=place();
   bar.append(info,navSel,prevB,navPos,nextB,keysBtn,allBtn2,aiInfo,allBtn,clrBtn,doneBtn,orphBtn,hideBtn,syncBtn,status); document.body.append(bar,pnl);
   // the bar spans the window; space at the end of the page, as tall as the bar, keeps the last lines readable
@@ -582,6 +739,7 @@ function init(){
   bar_(); sync('auto');
   window.wmnNotes=()=>data;   // for check_notes.py and debugging
   document.body.append(toast);
+  const onBtn=btn('Turn notes on (Alt+N)',()=>setOff(false)); onBtn.className='wmn-on'; document.body.append(onBtn);
   /* Esc opens or closes the note under the pointer. Esc keeps its other jobs first (popup, typing, Reattach);
      with no note under the pointer, the page gets the key. */
   // capture on window: the page's own handlers cannot hide the pointer from us
@@ -593,9 +751,9 @@ function init(){
     const off=bar.classList.toggle('wmn-off'); lsSet(LSBAR,off?'1':null);
     say(off?'Toolbar hidden: press Esc near the bottom to show it':'Toolbar shown');
   };
-  const onScreen=id=>{ const c=document.querySelector('.wmn-card[data-id="'+id+'"]'); if(!c||!c.offsetParent) return false; const r=c.getBoundingClientRect(); return r.bottom>0&&r.top<innerHeight; };
+  const onScreen=id=>{ const c=document.querySelector('.wmn-card[data-id="'+id+'"]'); if(!c||!c.getClientRects().length) return false; const r=c.getBoundingClientRect(); return r.bottom>0&&r.top<innerHeight; };
   window.addEventListener('keydown',e=>{
-    if(e.key!=='Escape'||e.altKey||e.ctrlKey||e.metaKey||e.shiftKey||picking) return;
+    if(isOff()||e.key!=='Escape'||e.altKey||e.ctrlKey||e.metaKey||e.shiftKey||picking) return;
     const pp=document.querySelector('.wmn-pop'); if(pp&&pp.style.display==='flex') return;
     if(inside(e.target,TYPING)) return;
     if(nearBottom()){ e.preventDefault(); e.stopImmediatePropagation(); toggleBar(); return; }   // the bottom of the window belongs to the bar
@@ -604,9 +762,9 @@ function init(){
     e.preventDefault(); e.stopImmediatePropagation(); toggle(n);
   },true);
   let diffB=null;               // hovering a changed paragraph marks its new words
-  document.addEventListener('mouseover',e=>{ const b=blockAt(e.target); if(!b||b===diffB) return; diffB=b; showDiff(data.notes.find(n=>n.was&&where.get(n.id)===b)||null); });
+  document.addEventListener('mouseover',e=>{ const b=blockAt(e.target); if(isOff()||!b||b===diffB) return; diffB=b; showDiff(data.notes.find(n=>n.was&&where.get(n.id)===b)||null); });
   window.addEventListener('keydown',e=>{        // capture: before the page's own handlers, which then do not see the key
-    if(!keysOn||picking||(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')||e.altKey||e.ctrlKey||e.metaKey||e.shiftKey) return;
+    if(DECK||isOff()||!keysOn||picking||(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')||e.altKey||e.ctrlKey||e.metaKey||e.shiftKey) return;
     if(inside(e.target,OWNKEYS)) return;
     e.preventDefault(); e.stopImmediatePropagation(); jump(e.key==='ArrowRight'?1:-1);
   },true);
@@ -645,7 +803,7 @@ function init(){
   pop.addEventListener('mousedown',e=>e.preventDefault());      // keep the selection while a button is pressed
   function noteFor(n){
     const b=where.get(n.id); if(!b) return;
-    const old=ROOT.querySelector('.wmn-card[data-id="'+n.id+'"]'), c=old||el('div','wmn-card');
+    const old=document.querySelector('.wmn-card[data-id="'+n.id+'"]'), c=old||el('div','wmn-card');
     if(!old){ c.dataset.id=n.id; after(b,c); } edit(n,c,false);
   }
   function popup(x,y,n,make){     // n: the clicked highlight; or null, and make() creates one from the selection
