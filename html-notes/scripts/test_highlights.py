@@ -28,6 +28,7 @@ PARAS = ["The world model predicts the next latent state from the current one.",
 PAGE = ('<!doctype html><html><head><meta charset="utf-8"><title>t</title></head><body><main>\n<h2 id="s1">Section</h2>\n'
         + "\n".join(f"<p>{p}</p>" for p in PARAS) + "\n</main>\n"
         # keyboard shortcuts like a slide deck's: "o" opens an overview, Space turns the slide
+        "<script>window.addEventListener('keydown', () => { window.keysSeen = (window.keysSeen || 0) + 1; }, true);</script>\n"
         "<script>document.addEventListener('keydown', e => { if (e.target.tagName === 'INPUT') return;"
         " if (e.key === 'o') document.body.classList.toggle('ov'); if (e.key === ' ') e.preventDefault();"
         " if (e.key === 'ArrowRight') document.body.dataset.slides = +(document.body.dataset.slides || 0) + 1; });</script>\n"
@@ -167,7 +168,7 @@ def main():
 
         # step-through: three lists; a paragraph edited without a resolved note counts as "Text changed"
         opts = "() => [...document.querySelectorAll('.wmn-bar select option')].map(o => o.textContent)"
-        ok(page.evaluate(opts) == ["All (4)", "To review (3)", "Text changed (1)"], f"step-through counts {page.evaluate(opts)}")
+        ok(page.evaluate(opts) == ["All (4)", "For AI (0)", "To review (3)", "Text changed (1)"], f"step-through counts {page.evaluate(opts)}")
         page.select_option(".wmn-bar select", "review")
         page.click(".wmn-bar >> text=▶")
         ok("1/3" in page.inner_text(".wmn-bar") and page.evaluate("(document.querySelector('.wmn-flash') || {dataset: {}}).dataset.id") == sid,
@@ -320,6 +321,104 @@ def main():
         page.keyboard.press("ArrowRight")
         ok(page.input_value("#rg") == "6", "with a slider focused, → moves the slider, not the notes")
         page.evaluate("document.activeElement.blur()")
+
+        # in a note, no key acts outside it, not even a page handler that listens early; the mouse still works
+        state = "() => [window.keysSeen || 0, document.body.classList.contains('ov'), document.body.dataset.slides, scrollY]"
+        page.click(f"{card} [aria-label='Edit']")
+        page.evaluate(nuke)
+        s0 = page.evaluate(state)
+        page.keyboard.type("o ")
+        page.keyboard.press("ArrowRight")
+        ok(page.evaluate(state) == s0 and "o " in page.input_value(f"{card} textarea"), "while typing in a note, no key reaches an early page handler")
+        page.mouse.click(300, 300)
+        page.evaluate(nuke)
+        s0 = page.evaluate(state)
+        pos0 = page.inner_text(".wmn-toast")
+        for key in ("o", "ArrowRight", "Space", "PageDown"):
+            page.keyboard.press(key)
+        page.wait_for_timeout(100)
+        ok(page.evaluate(state) == s0 and page.inner_text(".wmn-toast") == pos0, "after a mouse click outside the open note, keys still do nothing out there")
+        page.click(".wmn-bar >> text=▶")
+        ok(page.inner_text(".wmn-toast") != pos0 or page.locator(".wmn-flash").count() > 0, "the mouse still works while the note is open")
+        page.click(f"{card} textarea")
+        page.keyboard.press("Escape")
+        ok(page.locator(".wmn-card textarea").count() == 0, "Esc still cancels inside the note")
+        page.click(f"{card} [aria-label='Edit']")
+        page.evaluate(nuke)
+        page.keyboard.type(" more")
+        page.keyboard.press("Control+Enter")
+        page.evaluate(nuke)
+        ok(page.locator(".wmn-card textarea").count() == 0 and "more" in page.inner_text(card), "Ctrl+Enter still saves inside the note")
+        page.mouse.click(300, 300)
+        s0 = page.evaluate(state)
+        page.keyboard.press("o")
+        ok(page.evaluate(state)[:2] == [s0[0] + 1, not s0[1]], "page shortcuts work again once the note is closed")
+
+        # Cmd/Ctrl+Enter from outside the note; Shift also queues; on the note under the pointer it toggles For AI
+        page.click(f"{card} [aria-label='Edit']")
+        page.evaluate(nuke)
+        page.keyboard.type(" outside")
+        page.mouse.click(300, 300)
+        page.keyboard.press("Control+Enter")
+        page.evaluate(nuke)
+        ok(page.locator(".wmn-card textarea").count() == 0 and "outside" in page.inner_text(card), "Ctrl+Enter saves even with the focus outside the note")
+        page.mouse.move(1, 1)
+        page.hover("main p >> nth=0")
+        page.click(".wmn-add")
+        page.evaluate(nuke)
+        page.keyboard.type("queue me")
+        page.keyboard.press("Control+Shift+Enter")
+        page.evaluate(nuke)
+        q = page.evaluate("() => { const n = wmnNotes().notes.find(n => n.text === 'queue me'); return n && [n.id, !!n.ai]; }")
+        ok(q and q[1], "Ctrl+Shift+Enter saves and queues the note for the AI")
+        page.hover(f".wmn-card[data-id={q[0]}] .wmn-text")
+        page.keyboard.press("Control+Shift+Enter")
+        page.evaluate(nuke)
+        ok(not page.evaluate("id => !!wmnNotes().notes.find(n => n.id === id).ai", q[0]), "Ctrl+Shift+Enter toggles For AI on the note under the pointer")
+
+        # the dialog: three visible buttons; Later and No differ
+        toggle = f".wmn-card[data-id={q[0]}] [aria-label='For AI']"
+        def flip():
+            page.click(toggle)
+            page.wait_for_timeout(200)       # the dialog comes after the folder lookup
+        flip()
+        vis = page.evaluate("""() => [...document.querySelectorAll('.wmn-dialog button')].map(b => [b.textContent, getComputedStyle(b).color !== getComputedStyle(b).backgroundColor])""")
+        ok(vis == [["Yes, choose folder", True], ["Later", True], ["No", True]], f"the dialog shows Yes, Later and No, all readable {vis}")
+        page.click(".wmn-dialog button >> text=Later")
+        ok(page.locator(".wmn-dialog").count() == 0, "Later closes the dialog")
+        flip()
+        ok(page.locator(".wmn-dialog").count() == 0, "Later: no more asking on this visit")
+        page.reload()
+        page.wait_for_timeout(500)
+        flip()
+        ok(page.locator(".wmn-dialog").count() == 1, "Later: asks again when the page is opened again")
+        page.click(".wmn-dialog button >> text=/^No$/")
+        ok(page.locator(".wmn-dialog").count() == 0, "No closes the dialog")
+        page.reload()
+        page.wait_for_timeout(500)
+        flip()
+        ok(page.locator(".wmn-dialog").count() == 0 and "Not synced" in page.inner_text(".wmn-bar"), "No: never asks again; the toolbar warning stays")
+
+        # a deck: later content painted over the note, and a box that clips it; Save must still take the click
+        (d / "deck.html").write_text("""<!doctype html><html><head><meta charset="utf-8"><title>d</title><style>html,body{overflow:hidden;height:100%;margin:0}
+.s{position:absolute;inset:0;overflow:hidden}dl{position:absolute;left:40px;top:40px;display:grid;grid-template-columns:auto 1fr;margin:0}
+h2{position:absolute;left:0;right:0;top:110px;height:300px;margin:0;font-size:80px}.b{position:absolute;left:600px;top:40px;width:200px;height:30px;overflow:hidden}.b p{margin:0}</style></head>
+<body><main><div class="s"><dl><dt>Wanted item</dt><dd>one thing here</dd></dl><h2>A big heading over the note</h2><div class="b"><p>Clipped text</p></div></div></main></body></html>""")
+        subprocess.run([sys.executable, str(Path(__file__).with_name("add_notes.py")), str(d / "deck.html")], check=True)
+        deck = page.context.browser.new_page()
+        deck.goto((d / "deck.html").as_uri())
+        deck.wait_for_timeout(300)
+        for sel, word in (("dt", "covered"), (".b p", "clipped")):
+            deck.hover(sel)
+            deck.click(".wmn-add")
+            deck.evaluate(nuke)
+            deck.keyboard.type(word)
+            deck.click(".wmn-card >> text=Save note", timeout=3000)
+            deck.evaluate(nuke)
+            ok(deck.evaluate("w => wmnNotes().notes.some(n => n.text === w)", word), f"a {word} note can be saved with the mouse")
+        ok(deck.evaluate("() => { const c = document.querySelector('.s dl .wmn-card'); return !!c && c.previousElementSibling.tagName === 'DD'; }"),
+           "a note on a <dt> sits after its <dd>")
+        deck.close()
         ok(not errors, f"no page errors {errors}")
     sys.exit(1 if fails else 0)
 

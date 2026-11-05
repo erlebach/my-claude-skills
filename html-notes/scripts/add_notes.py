@@ -5,8 +5,8 @@
     add_notes.py page.html --remove   # take the layer out again (the notes file is kept)
     add_notes.py page.html --banner "Notes: Chrome only"
 
-The layer consists of three marked blocks: a <script> tag in <head> that loads
-<stem>.notes.js, a banner at the top of <body>, and the notes code before </body>.
+The layer consists of three marked blocks: in <head>, a key guard and a <script> tag that
+loads <stem>.notes.js; a banner at the top of <body>, and the notes code before </body>.
 Re-running replaces the marked blocks, so it is safe after the HTML is regenerated.
 The notes file is created empty if missing and never overwritten.
 """
@@ -57,7 +57,10 @@ def main():
         layer = (ASSET.read_text(encoding="utf-8")
                  .replace("__NOTES_FILE__", notes.name)
                  .replace("__HTML_FILE__", page.name))
-        head = f'<script src="{quote(notes.name)}"></script>'
+        # the key guard is registered here, before the page's own scripts, so it sees every key first
+        guard = ("<script>['keydown','keypress','keyup'].forEach(function(t){window.addEventListener(t,"
+                 "function(e){if(window.wmnGuard)window.wmnGuard(e);},true);});</script>")
+        head = guard + f'\n<script src="{quote(notes.name)}"></script>'
         i = head_end.start()
         html = html[:i] + mark("head", head) + html[i:]
         if a.banner:

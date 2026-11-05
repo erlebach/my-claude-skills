@@ -13,13 +13,13 @@
      ◀ ▶ (or the ← → keys) visit all items, the AI results not yet reviewed, or the notes whose paragraph changed (n.was). -->
 <style>
 /* z-index near the maximum, so no page element covers the layer; the layer's own order: + < bar, panel < popup < dialog, message */
-.wmn-banner,.wmn-card,.wmn-bar,.wmn-panel,.wmn-add,.wmn-pop,.wmn-toast{--wmn-accent:#C9932B;--wmn-soft:#F1E4C4;--wmn-paper:#FFF8E1;--wmn-ink:#1C2B33;--wmn-ink2:#4A5A63;--wmn-rule:#C9D3D6;--wmn-loss:#A63D40;--wmn-sans:"Avenir Next","Avenir","Helvetica Neue",Helvetica,Arial,sans-serif;color:var(--wmn-ink);font-weight:400}   /* not the page's weight: a light page font made notes faint */
+.wmn-banner,.wmn-card,.wmn-bar,.wmn-panel,.wmn-add,.wmn-pop,.wmn-toast,.wmn-dialog{--wmn-accent:#C9932B;--wmn-soft:#F1E4C4;--wmn-paper:#FFF8E1;--wmn-ink:#1C2B33;--wmn-ink2:#4A5A63;--wmn-rule:#C9D3D6;--wmn-loss:#A63D40;--wmn-sans:"Avenir Next","Avenir","Helvetica Neue",Helvetica,Arial,sans-serif;color:var(--wmn-ink);font-weight:400}   /* not the page's weight: a light page font made notes faint */
 .wmn-banner{font-family:var(--wmn-sans);font-size:.85rem;background:var(--wmn-soft);border-bottom:1px solid var(--wmn-accent);padding:6px 16px;text-align:center}
 .wmn-btn{font-family:var(--wmn-sans);font-size:.75rem;line-height:1.4;background:var(--wmn-ink);color:#fff;border:1px solid var(--wmn-ink);border-radius:0;padding:2px 8px;margin:0;cursor:pointer}
 .wmn-btn.alt{background:#fff;color:var(--wmn-ink)}
 .wmn-add{position:absolute;z-index:2147483000;display:none;width:22px;height:22px;padding:0;border:0;border-radius:50%;background:var(--wmn-accent);color:#fff;font:600 16px/22px var(--wmn-sans);text-align:center;opacity:.85;cursor:pointer}
 .wmn-add:hover{opacity:1}
-.wmn-card{font-family:var(--wmn-sans);font-size:.9rem;line-height:1.45;text-align:left;background:var(--wmn-paper);border:1px solid var(--wmn-accent);border-left:4px solid var(--wmn-accent);padding:8px 12px;margin:-6px 0 18px;list-style:none}
+.wmn-card{position:relative;z-index:2147482990;grid-column:1/-1;scroll-margin-bottom:100px;font-family:var(--wmn-sans);font-size:.9rem;line-height:1.45;text-align:left;background:var(--wmn-paper);border:1px solid var(--wmn-accent);border-left:4px solid var(--wmn-accent);padding:8px 12px;margin:-6px 0 18px;list-style:none}
 .wmn-text,.wmn-card textarea{color:#1A1A1A}   /* note text: 90% gray */
 .wmn-text{white-space:pre-wrap}
 .wmn-meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:.75rem;color:var(--wmn-ink2);margin-top:6px}
@@ -34,6 +34,7 @@
 .wmn-panel{position:fixed;right:12px;bottom:56px;z-index:2147483001;display:none;box-sizing:border-box;width:min(440px,calc(100vw - 24px));max-height:60vh;overflow:auto;background:#fff;border:1px solid var(--wmn-rule);box-shadow:0 2px 8px rgba(0,0,0,.12);padding:10px}
 .wmn-panel .wmn-card{margin:0 0 10px}
 .wmn-old{font-size:.75rem;color:var(--wmn-ink2);margin-bottom:4px}
+.wmn-card.wmn-float{position:fixed;z-index:2147483002;box-sizing:border-box;width:min(560px,calc(100vw - 24px));margin:0;box-shadow:0 4px 16px rgba(0,0,0,.25)}
 .wmn-head{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:4px}
 .wmn-card.wmn-closed{padding:3px 10px}
 .wmn-card.wmn-closed .wmn-head{margin-bottom:0}
@@ -74,7 +75,7 @@ body.wmn-hide-done .wmn-card.wmn-done:not(.wmn-panel .wmn-card){display:none}
 (function(){
 'use strict';
 const FILE='__NOTES_FILE__', HTML='__HTML_FILE__';
-const KEY=location.pathname, DIRKEY='dir:'+KEY.replace(/[^/]*$/,''), LS='wmn-pending:'+KEY, LSHIDE='wmn-hide:'+KEY, LSDONE='wmn-hide-done:'+KEY, LSKEYS='wmn-keys:'+KEY, LSBAR='wmn-bar-off:'+KEY;
+const KEY=location.pathname, DIRKEY='dir:'+KEY.replace(/[^/]*$/,''), LS='wmn-pending:'+KEY, LSHIDE='wmn-hide:'+KEY, LSDONE='wmn-hide-done:'+KEY, LSKEYS='wmn-keys:'+KEY, LSBAR='wmn-bar-off:'+KEY, LSNOASK='wmn-no-ask:'+KEY;
 const BLOCKS='p,li,dt,dd,h1,h2,h3,h4,h5,h6,.eq,figure,table,pre,blockquote,.note,.diffnote,.widget';
 const OURS='.wmn-card,.wmn-bar,.wmn-panel,.wmn-banner,.wmn-add,.wmn-pop,.wmn-toast,.wmn-pad';
 const canSave=!!window.showDirectoryPicker;
@@ -83,6 +84,22 @@ const canSave=!!window.showDirectoryPicker;
 const TYPING='textarea,select,[contenteditable=""],[contenteditable="true"],input:not([type=range]):not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]):not([type=reset]):not([type=color]):not([type=file])';
 const OWNKEYS=TYPING+',input[type=range],.widget';
 const inside=(t,sel)=>!!(t&&t.closest&&t.closest(sel));
+/* While the reader is in a note (its text box is open, or the focus is on the note), keys act on that note only. The guard
+   is called first for every key, from a listener in <head>, so it stops the page's handlers and ours; the mouse is not touched. */
+window.wmnGuard=e=>{
+  const card=inside(e.target,'.wmn-card')&&e.target.closest('.wmn-card'), mod=e.metaKey||e.ctrlKey, kd=e.type==='keydown', save=e.key==='Enter'&&mod;
+  const ta=(card&&card.querySelector('textarea'))||(curTa&&curTa.isConnected?curTa:document.querySelector('.wmn-card textarea'));
+  if(!ta){
+    const n=kd&&save&&e.shiftKey&&canSave&&hoverId&&data.notes.find(x=>x.id===hoverId);      // Cmd+Shift+Enter: For AI on the note under the pointer
+    if(n){ e.preventDefault(); e.stopImmediatePropagation(); toggleAI(n); return; }
+    if(card&&e.key!=='Escape') e.stopImmediatePropagation();                                  // focus on a read note: Esc still opens or closes it
+    return;
+  }
+  e.stopImmediatePropagation();
+  if(kd&&(save||(card&&e.key==='Escape'))){ if(save) e.preventDefault(); ta.wmnKey(e); return; }   // Cmd+Enter works even with the focus outside the note
+  if(!card&&e.key!=='Tab'&&!mod&&!e.altKey) e.preventDefault();   // focus moved away by the mouse: no scrolling or typing out there; browser shortcuts stay
+};
+let curTa=null;       // the note text box opened last
 const COLORS={y:'rgba(255,214,0,.45)',g:'rgba(110,205,90,.4)',b:'rgba(90,170,255,.38)',p:'rgba(255,110,170,.38)'};
 const canPaint=!!(window.CSS&&CSS.highlights&&window.Highlight);
 const DELIMS=[{left:'$$',right:'$$',display:true},{left:'\\[',right:'\\]',display:true},{left:'\\(',right:'\\)',display:false},{left:'$',right:'$',display:false}];
@@ -180,7 +197,11 @@ const shown=n=>!!(n.text||n.status||n.resolution||n.was||(n.ai&&!n.strike));   /
 const quoteOf=n=>{ if(!n.hl) return []; const q=n.hl.quote, d=el('div','wmn-quote','“'+(q.length>200?q.slice(0,200)+'…':q)+'”'); d.style.borderColor=n.strike?'#C0392B':COLORS[n.hl.color]||COLORS.y; if(n.strike) d.style.textDecoration='line-through'; return [d]; };
 
 /* ---- rendering ---- */
-function after(b,c){ let r=b; while(r.nextElementSibling&&r.nextElementSibling.classList.contains('wmn-card')) r=r.nextElementSibling; r.after(c); }
+function after(b,c){   // below the block and its earlier cards; a note on a <dt> goes after its <dd>, so a term and its definition stay together
+  let r=b;
+  for(let x=r.nextElementSibling;x&&(x.classList.contains('wmn-card')||(b.tagName==='DT'&&x.tagName==='DD'));x=r.nextElementSibling) r=x;
+  r.after(c);
+}
 function math(e){
   if(window.renderMathInElement) renderMathInElement(e,{delimiters:DELIMS,throwOnError:false});
   else if(window.MathJax&&MathJax.typesetPromise) MathJax.typesetPromise([e]).catch(()=>{});
@@ -250,7 +271,10 @@ function card(n){
 }
 /* Edit the note itself, or (turn given) write a reply or change your latest reply. A new reply queues the note. */
 function edit(n,c,isNew,turn){
-  const ta=el('textarea'); ta.value=turn?turn.text:n.text||''; ta.placeholder=(turn?'Your reply':'Your note')+'. $math$ works. Ctrl/Cmd+Enter saves, Esc cancels.';
+  const ta=el('textarea'); ta.value=turn?turn.text:n.text||''; ta.placeholder=(turn?'Your reply':'Your note')+'. $math$ works. Ctrl/Cmd+Enter saves'+(turn?'':', with Shift also queues for the AI')+'. Esc cancels.'; curTa=ta;
+  /* If the page covers or clips the note (a slide deck), the editor floats above the page; put() brings the card home */
+  let mark=null;
+  const put=x=>{ if(mark){ mark.replaceWith(x||document.createTextNode('')); c.remove(); } else if(x) c.replaceWith(x); else c.remove(); };
   const ok=btn(turn?'Send':'Save note',()=>{
     const t=ta.value.trim();
     if(turn){
@@ -259,18 +283,30 @@ function edit(n,c,isNew,turn){
         if(!n.thread.includes(turn)){ n.thread.push(turn); n.ai=true; delete n.status; delete n.reviewed; }
         turn.text=t; turn.at=now(); delete n.collapsed; n.updated=now(); changed();
       }
-      c.replaceWith(card(n)); return;
+      put(card(n)); return;
     }
-    if(!t&&!n.hl){ if(isNew) c.remove(); else del(n,true); return; }   // an empty note on a highlight keeps the highlight
+    if(!t&&!n.hl){ if(isNew) put(); else { put(); del(n,true); } return; }   // an empty note on a highlight keeps the highlight
     n.text=t; n.updated=now(); if(!data.notes.includes(n)) data.notes.push(n);
-    if(shown(n)) c.replaceWith(card(n)); else c.remove(); changed();
+    put(shown(n)?card(n):null); changed();
   });
-  const no=btn('Cancel',()=>{ if(turn) c.replaceWith(card(n)); else if(!data.notes.includes(n)||!shown(n)) c.remove(); else c.replaceWith(card(n)); },true);
-  const m=el('div','wmn-meta'); m.append(ok,no);
-  ta.addEventListener('keydown',e=>{ if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)) ok.click(); if(e.key==='Escape') no.click(); });
-  ['keydown','keypress','keyup'].forEach(t=>ta.addEventListener(t,e=>e.stopPropagation()));   // typing must not trigger the page's own shortcuts (slide decks)
+  const no=btn('Cancel',()=>{ put(turn||(data.notes.includes(n)&&shown(n))?card(n):null); },true);
+  const m=el('div','wmn-meta'); m.append(ok);
+  const forAI=turn?null:btn('Save for AI',()=>{ ok.click(); if(data.notes.includes(n)&&!n.ai) toggleAI(n); },true);
+  if(forAI){ forAI.title='Save, and queue the note for the AI (Ctrl/Cmd+Shift+Enter)'; m.append(forAI); }
+  ok.title='Ctrl/Cmd+Enter'; no.title='Esc'; m.append(no);
+  ta.wmnKey=e=>{ if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)) (e.shiftKey&&forAI||ok).click(); if(e.key==='Escape') no.click(); };   // called by wmnGuard
   c.classList.remove('wmn-closed');
-  c.replaceChildren(...quoteOf(n),...(turn?thread(turns(n),turn):[]),ta,m); ta.focus();
+  c.replaceChildren(...quoteOf(n),...(turn?thread(turns(n),turn):[]),ta,m);
+  const B=getComputedStyle(document.body).overflow, H=getComputedStyle(document.documentElement).overflow;
+  if(B!=='hidden'&&H!=='hidden') c.scrollIntoView({block:'nearest'});
+  const r0=ok.getBoundingClientRect(), hit=document.elementFromPoint(r0.left+r0.width/2,r0.top+r0.height/2);
+  if(!hit||!c.contains(hit)){
+    mark=document.createComment('wmn-note'); c.before(mark); c.classList.add('wmn-float'); document.body.append(c);
+    const r=(where.get(n.id)||mark.parentElement).getBoundingClientRect();
+    c.style.left=Math.max(12,Math.min(r.left,innerWidth-c.offsetWidth-12))+'px';
+    c.style.top=Math.max(12,Math.min(r.bottom+6,innerHeight-c.offsetHeight-12))+'px';
+  }
+  ta.focus({preventScroll:true});
 }
 function del(n,quiet){
   if(!quiet&&!confirm(n.strike?'Remove this strike-through?':n.hl?'Delete this highlight'+(n.text?' and its note?':'?'):'Delete this note?')) return;
@@ -374,7 +410,7 @@ const allBtn=btn('All for AI',()=>{ const open=data.notes.filter(n=>!n.ai&&!n.st
 const clrBtn=btn('Clear',()=>{ for(const n of data.notes) if(n.ai){ delete n.ai; n.updated=now(); } changed(); rerender(); },true);
 allBtn.title='Queue every open note and highlight for the AI'; clrBtn.title='Take every note off the AI queue';
 /* step-through: ◀ ▶ visit the items of the chosen list in page order, and flash each one */
-const MODES={all:['All',n=>true],review:['To review',n=>n.status&&!n.reviewed],changed:['Text changed',n=>n.was]};
+const MODES={all:['All',n=>true],ai:['For AI',n=>n.ai],review:['To review',n=>n.status&&!n.reviewed],changed:['Text changed',n=>n.was]};
 const navSel=el('select','wmn-btn alt'), navPos=el('span'), prevB=btn('◀',()=>jump(-1),true), nextB=btn('▶',()=>jump(1),true);
 let mode='all', cur=-1, hoverId=null;   // hoverId: the note under the pointer
 navSel.setAttribute('aria-label','Step through'); prevB.title='Previous'; nextB.title='Next';
@@ -460,7 +496,7 @@ function merge(a,b){
           notes:[...m.values()].sort((x,y)=>(x.created||'')<(y.created||'')?-1:1)};
 }
 function rerender(){
-  if(ROOT.querySelector('.wmn-card textarea')) return;          // never pull a note away while it is being edited
+  if(document.querySelector('.wmn-card textarea')) return;          // never pull a note away while it is being edited
   ROOT.querySelectorAll('.wmn-card').forEach(c=>c.remove()); where.clear();
   if(place()){ data.updated=now(); dirty=true; }
   panel();
@@ -503,12 +539,16 @@ async function sync(mode){
   }catch(e){ show(e.name==='AbortError'?(dirty?'connect':'synced'):'error',e.message); }
   finally{ busy=false; bar_(); if(again){ again=false; sync('auto'); } }
 }
+/* Yes: choose the folder. Later: ask again the next time the page is opened. No: never ask for this page (the toolbar's warning still offers it). */
+let askLater=false;
 function ask(){
-  if(document.querySelector('.wmn-dialog')) return;
+  if(askLater||lsGet(LSNOASK)||document.querySelector('.wmn-dialog')) return;
   const d=el('div','wmn-dialog'), row=el('div','wmn-meta');
-  row.append(btn('Choose folder',()=>{ d.remove(); sync('pick'); }),btn('Later',()=>d.remove(),true));
-  d.append(el('p','','Keep these notes in sync with the file '+FILE+'?'),
-           el('p','wmn-old','Chrome needs permission to write in the folder that contains '+HTML+'. Choose that folder in the next window. You do this once per folder. Until then your notes are kept in this browser.'),row);
+  const yes=btn('Yes, choose folder',()=>{ d.remove(); sync('pick'); }), later=btn('Later',()=>{ askLater=true; d.remove(); },true), nope=btn('No',()=>{ lsSet(LSNOASK,'1'); d.remove(); },true);
+  later.title='Ask again the next time you open this page'; nope.title='Do not ask again for this page. The red warning in the toolbar still lets you connect.';
+  row.append(yes,later,nope);
+  d.append(el('p','','Save your notes to the file '+FILE+'?'),
+           el('p','wmn-old','Your notes are now only in this browser, so clearing its data or using another browser would lose them. Yes: Chrome writes every change to that file, next to '+HTML+', and rereads it when you return to the tab. Chrome needs your permission for the folder, once per folder. Later: ask again next time. No: do not ask again for this page.'),row);
   document.body.append(d);
 }
 

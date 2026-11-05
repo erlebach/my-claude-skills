@@ -39,7 +39,7 @@ Each note stores the text of its paragraph, the text of the two paragraphs next 
     The script adds the notes code to the page and creates an empty `page.notes.js`. It never overwrites an existing notes file.
 
 2. Open the page in Chrome.
-3. Add a note. The first time, a dialog asks you to choose a folder. Choose the folder that contains the page. Chrome remembers it for every page in that folder.
+3. Add a note. The first time, a dialog asks whether to save your notes to the file. **Yes, choose folder**: choose the folder that contains the page; Chrome remembers it for every page in that folder. **Later**: the notes stay in this browser, and the dialog asks again the next time you open the page. **No**: the notes stay in this browser, and the dialog does not ask again for this page; the red warning in the toolbar still lets you connect.
 
 To set up and test a page in one step, run `check_notes.py` on it instead (see [Scripts](#scripts)).
 
@@ -54,9 +54,9 @@ To take the notes code out of a page, run `add_notes.py --remove page.html`. The
 
 ### Notes
 
-Move the pointer over a paragraph, equation, figure or list item. Click the gold **+** at its left. Type the note and press Ctrl+Enter or Cmd+Enter to save it, or Esc to cancel. `$…$` math in a note is rendered if the page uses KaTeX or MathJax.
+Move the pointer over a paragraph, equation, figure or list item. Click the gold **+** at its left. Type the note and press Ctrl+Enter or Cmd+Enter to save it, or Esc to cancel. Ctrl+Shift+Enter or Cmd+Shift+Enter, or the **Save for AI** button, saves the note and queues it for the AI. The save keys also work after a mouse click has moved the focus out of the note. If the page covers or clips the note, as a slide deck can, the text box floats above the page until you save or cancel. `$…$` math in a note is rendered if the page uses KaTeX or MathJax.
 
-While you type in a note, the page's own keyboard shortcuts are off. For example, the "o" and arrow keys of a slide deck do not change slides. The shortcuts work again when the note is saved or cancelled.
+While you are in a note, every key acts on that note only. No shortcut of the page or of the toolbar works: for example, the "o" and arrow keys of a slide deck do not change slides. This holds while the note's text box is open, even after a mouse click elsewhere, and while the keyboard focus is on one of the note's buttons. The mouse still works, and so do browser shortcuts such as Cmd+C. The shortcuts come back when you save or cancel the note.
 
 ### Conversations
 
@@ -78,7 +78,7 @@ Each note has a header row:
 | ▾ / ▸ | Closes or opens the note. On a tall note, **Close note** at the bottom does the same, so you need not scroll back up. |
 | Status (Fixed, Answered, Declined) | The AI's latest result. Click it to mark the note **Reviewed**; it then shows ✓. |
 | 💬 N | On a closed note: the number of exchanges (your question and the AI's answer). Shown only from 2 exchanges, when the bar hides a conversation. |
-| 🤖 | Queues the note for the AI, or takes it off the queue. |
+| 🤖 | Queues the note for the AI, or takes it off the queue. With the pointer over the note, Ctrl+Shift+Enter or Cmd+Shift+Enter does the same. |
 | ✎ | Edits your latest turn. |
 | 🗑 | Deletes the note (**Remove strike** for a strike). |
 
@@ -124,11 +124,12 @@ To remove a strike, click the struck words, then **Remove strike**. 🗑 on the 
 
 ### Step-through
 
-Use the list and the ◀ ▶ buttons in the toolbar to move from item to item in page order. Each step scrolls to the item and flashes it. The position shows as, for example, `3/12`. The list has three choices:
+Use the list and the ◀ ▶ buttons in the toolbar to move from item to item in page order. Each step scrolls to the item and flashes it. The position shows as, for example, `3/12`. The list has four choices:
 
 | Choice | Items it visits |
 |---|---|
 | All | Every note, highlight and strike. |
+| For AI | The notes, highlights and strikes in the AI queue. |
 | To review | The AI's results (Fixed, Answered, Declined) that you have not yet marked **Reviewed**. |
 | Text changed | The notes whose paragraph text changed while the note was neither queued nor resolved. The card shows the change: removed words struck through, new words underlined. While the pointer is over the note or the paragraph, the new words are marked in the page. The comparison is by whole words and is approximate; words inside formulas are not marked in the page. |
 
@@ -207,7 +208,7 @@ All scripts are in `~/.claude/skills/html-notes/scripts/`. They run with plain `
 | `resolve_notes.py page.html queue all` | Queues every open item. `queue ID …` queues the named items. |
 | `resolve_notes.py page.html mark ID STATUS "reply"` | Adds the AI's turn to the conversation and records the outcome. STATUS is `fixed`, `answered` or `declined`. The script sets the timestamps so that the browser does not overwrite the change, and opens the note. |
 | `resolve_notes.py page.html delete ID …` | Deletes items and records their ids in `deleted`. Use it only when the reader asks. |
-| `test_highlights.py` | Runs the feature tests (51 checks) in headless Chrome on a throwaway page. Run it after changing the notes code. |
+| `test_highlights.py` | Runs the feature tests (69 checks) in headless Chrome on a throwaway page. Run it after changing the notes code. |
 
 ## Put a page on a web server
 
@@ -231,6 +232,7 @@ If the notes do not appear:
 - **What notes attach to:** the blocks `p`, `li`, `dt`, `dd`, `h1`–`h6`, `figure`, `table`, `pre`, `blockquote`, and the classes `.eq`, `.note`, `.diffnote` and `.widget`, inside `<main>` if the page has one. To support other blocks, add them to `BLOCKS` in `assets/notes-layer.html` and run `add_notes.py` on the page again.
 - **One block per highlight:** a highlight or strike stays inside one block. A selection that runs into the next block is cut at the end of the first.
 - **No partial formulas:** you cannot select part of a formula. A highlight around inline math covers it. To comment on an equation, add a note to it.
+- **Clipped notes in decks:** a saved note inside a box that clips its content can stay cut off. The text box floats above the page while you write, but the saved card goes back into the box.
 - **Hidden blocks:** step-through cannot scroll to a block that the page itself hides, such as a slide that is not showing in a slide deck.
 - **Page structure:** the page needs `</head>` and `</body>` tags. HTML fragments are refused.
 
