@@ -28,6 +28,7 @@ JS = """() => ({
   highlights: window.NOTES ? window.NOTES.notes.filter(n => n.hl).length : null,
   queued: window.NOTES ? window.NOTES.notes.filter(n => n.ai).length : null,
   resolved: window.NOTES ? window.NOTES.notes.filter(n => n.status).length : null,
+  hidden: window.wmnSkip ? window.wmnSkip.list().length : null,
   painted: (window.CSS && CSS.highlights) ? [...CSS.highlights.values()].reduce((s, h) => s + h.size, 0) : null,
   cards: document.querySelectorAll('.wmn-card').length,
   katexErrors: document.querySelectorAll('.katex-error').length,
@@ -46,7 +47,7 @@ def check(pw, name, launch, url):
     browser.close()
     bar = (r["bar"] or "NO TOOLBAR").replace("\n", " · ")
     print(f"{name:7} toolbar: {bar} | items in file: {r['loaded']} (with note text: {r['withText']},"
-          f" highlights: {r['highlights']}, for AI: {r['queued']}, resolved: {r['resolved']}) | cards shown: {r['cards']} | highlights drawn: {r['painted']}"
+          f" highlights: {r['highlights']}, for AI: {r['queued']}, resolved: {r['resolved']}, hidden slides: {r['hidden']}) | cards shown: {r['cards']} | highlights drawn: {r['painted']}"
           f" | KaTeX errors: {r['katexErrors']} | page errors: {errors or 'none'}")
     return r["bar"] is not None and not errors
 

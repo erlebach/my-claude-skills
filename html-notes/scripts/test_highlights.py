@@ -735,6 +735,35 @@ if (!d) return; S[i].classList.remove('on'); i = Math.max(0, Math.min(2, i + d))
            and doc.locator(".wmn-layer").count() == 0, "on a scrolling page, a note stays in the text flow, and a note on a <dt> follows its <dd>")
         doc.close()
         deck.close()
+
+        # hidden slides: the layer keeps the list (saved with the notes), marks the slides, and print leaves them out
+        (d / "hide.html").write_text('<!doctype html><html><head><meta charset=utf-8><title>h</title><style>html,body{overflow:hidden;height:100%}</style></head>'
+                                     '<body><main><section class="slide" id="a"><p>A</p></section><section class="slide" id="b"><p>B</p></section>'
+                                     '<section class="slide" id="c"><p>C</p></section></main>'
+                                     "<script>window.addEventListener('wmn-skip', () => { window.skipEvents = (window.skipEvents || 0) + 1; });</script></body></html>")
+        (d / "hide.notes.js").write_text("window.NOTES = " + json.dumps({"version": 1, "updated": "2026-01-01T00:00:00.000Z", "notes": [],
+                                         "hidden": ["a"], "hiddenAt": "2026-01-01T00:00:00.000Z"}) + ";\n")
+        subprocess.run([sys.executable, str(Path(__file__).with_name("add_notes.py")), str(d / "hide.html")], check=True, capture_output=True)
+        hp = page.context.browser.new_page()
+        hp.goto((d / "hide.html").as_uri())
+        hp.wait_for_timeout(300)
+        ok(hp.evaluate("() => wmnSkip.has('a') && !wmnSkip.has('b') && document.getElementById('a').hasAttribute('data-wmn-skip')"),
+           "the hidden list from the notes file marks its slide")
+        hp.evaluate("() => { wmnSkip.set('a', false); wmnSkip.set('b', true); }")
+        d1 = hp.evaluate("() => wmnNotes()")
+        ok(d1["hidden"] == ["b"] and d1["hiddenAt"] > "2026" and hp.evaluate("() => window.skipEvents") >= 2
+           and not hp.evaluate("() => document.getElementById('a').hasAttribute('data-wmn-skip')"), "a slide can be hidden and shown again, and the page is told")
+        hp.emulate_media(media="print")
+        ok(hp.evaluate("() => ['a', 'b'].map(i => getComputedStyle(document.getElementById(i)).display)") == ["block", "none"], "print leaves out a hidden slide")
+        hp.emulate_media(media="screen")
+        hp.reload()                     # the change waits in the browser (no folder chosen); it merges over the older file
+        hp.wait_for_timeout(300)
+        ok(hp.evaluate("() => wmnSkip.list()") == ["b"], "after a reload the newer list wins whole: a slide shown again stays shown")
+        hp.goto((d / "hide.html").as_uri() + "?skip=c")
+        hp.wait_for_timeout(300)
+        ok(hp.evaluate("() => wmnSkip.fromLink() && wmnSkip.list().join() === 'c' && wmnSkip.set('a', true) === false && wmnNotes().hidden.join() === 'b'"),
+           "a ?skip= link overrides the list for that view and does not change the saved list")
+        hp.close()
         ok(not errors, f"no page errors {errors}")
     sys.exit(1 if fails else 0)
 

@@ -109,6 +109,33 @@ A slide deck has no room in its layout for notes. On a page that cannot scroll, 
 
 The page decides this by itself when it loads. A note hides what is under it: drag it away, hide it with H, close it, or turn all notes off with N (see [Turn notes off and on](#turn-notes-off-and-on)).
 
+### Hidden slides
+
+You can hide a slide from a talk without deleting it. The deck steps over a hidden slide, and print and PDF leave it out. You can show it again at any time.
+
+To hide or show a slide:
+
+- In the deck's slide overview (G), click the eye on the slide's card. A hidden slide's card is dimmed and struck through.
+- Or, on the slide itself, press X.
+- To show every hidden slide again, click **Show all hidden slides** in the overview.
+
+During the talk:
+
+- ← → and Space step over hidden slides. Home and End go to the first and last slide that is not hidden.
+- Slide numbers do not change. Links such as "Go to slide 28" still point to the right slide. The counter in the deck's toolbar shows a gap, for example 11 → 13.
+- A hidden slide is still reachable on purpose: click its card in the overview, type its number and Enter, or follow a link to it. The counter then shows "(hidden)". Use this for backup slides that you show only when asked.
+
+Where the list is kept:
+
+- The list is saved in the notes file (`page.notes.js`), as `hidden` (slide ids) and `hiddenAt` (when the list last changed). It goes with the folder to any machine.
+- It is saved like a note: Chrome writes it; Safari and Firefox use it but cannot change it.
+- When two copies of the list meet, the newer list wins whole. So a slide that you showed again stays shown.
+- The list holds slide ids, not numbers, so it stays correct when slides are added or moved. An id for a slide that no longer exists is ignored.
+
+A link can override the list for one view: `talk.html?skip=s-14,d-2` hides those slides (by id) and ignores the saved list. The list cannot be changed while such a link is open; remove `?skip=` to change it.
+
+The deck must support this. The notes code keeps the list and marks each hidden slide, but only the deck's own script decides which slide comes next. A deck takes part by asking `window.wmnSkip.has(id)` when it steps, and by listening for the `wmn-skip` event to redraw its overview. See [Limits](#limits).
+
 ### Highlights
 
 Select text inside a paragraph. A popup appears with:
@@ -229,12 +256,12 @@ All scripts are in `~/.claude/skills/html-notes/scripts/`. They run with plain `
 |---|---|
 | `add_notes.py page.html` | Adds or updates the notes code in the page, and creates an empty notes file if there is none. It does not rewrite a page that is already current. `--remove` takes the code out. `--banner "<html>"` changes the banner at the top, and `--banner ""` leaves it out. Without `--banner`, a page keeps the banner it has. |
 | `add_notes.py --all FOLDER` | Updates every page in the folder and below that has notes. `--check` only lists the out-of-date pages. |
-| `check_notes.py page.html` | Adds the notes code if the page has none, or updates an old copy, then loads the page in headless Chrome and WebKit (Safari's engine). It reports the toolbar, the counts of notes, highlights, queued and resolved items, the cards shown, and any page errors. |
+| `check_notes.py page.html` | Adds the notes code if the page has none, or updates an old copy, then loads the page in headless Chrome and WebKit (Safari's engine). It reports the toolbar, the counts of notes, highlights, queued and resolved items, the number of hidden slides, the cards shown, and any page errors. |
 | `resolve_notes.py page.html list` | Lists the queued items, each with its paragraph, its words (for a highlight or strike) and the whole conversation. `--all` lists every item. |
 | `resolve_notes.py page.html queue all` | Queues every open item. `queue ID …` queues the named items. |
 | `resolve_notes.py page.html mark ID STATUS "reply"` | Adds the AI's turn to the conversation and records the outcome. STATUS is `fixed`, `answered` or `declined`. The script sets the timestamps so that the browser does not overwrite the change, and opens the note. |
 | `resolve_notes.py page.html delete ID …` | Deletes items and records their ids in `deleted`. Use it only when the reader asks. |
-| `test_highlights.py` | Runs the feature tests (119 checks) in headless Chrome on a throwaway page. Run it after changing the notes code. |
+| `test_highlights.py` | Runs the feature tests (126 checks) in headless Chrome on a throwaway page. Run it after changing the notes code. |
 
 ## Put a page on a web server
 
@@ -260,6 +287,7 @@ If the notes do not appear:
 - **No partial formulas:** you cannot select part of a formula. A highlight around inline math covers it. To comment on an equation, add a note to it.
 - **Notes cover the slide:** on a slide deck, a note hides what is under it. Drag it away, close it, or turn notes off. **Notes off** (N) also removes the notes before you present.
 - **Hidden blocks:** to reach a note on another slide, step-through presses the deck's own arrow keys. If a deck does not change slides that way, the note stays out of reach, and a message says so.
+- **Hidden slides need the deck's help:** the notes code keeps the list and print leaves the slides out, but a deck steps over them only if its script asks `window.wmnSkip.has(id)`. `deck-html/talk.html` does. In a deck that does not, the list has no effect on the arrows.
 - **Page structure:** the page needs `</head>` and `</body>` tags. HTML fragments are refused.
 
 ## Suggested features to implement (TODO)
