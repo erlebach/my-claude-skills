@@ -476,6 +476,26 @@ def main():
         out = subprocess.run(add + [str(f / "a.html")], capture_output=True, text=True).stdout
         ok("already current" in out and (f / "a.html").stat().st_mtime_ns == m0, "a current page is not rewritten")
 
+        # a deck: Reply to AI on a note taller than the window keeps it in the layer, scrolled to the text box (it once froze)
+        (d / "long.html").write_text("""<!doctype html><html><head><meta charset="utf-8"><title>l</title><style>html,body{overflow:hidden;height:100%;margin:0}
+.s{position:absolute;inset:0}p{position:absolute;left:40px;top:40px;margin:0}</style></head><body><main><div class="s"><p>Long note here</p></div></main></body></html>""")
+        long_note = {"id": "lg", "tag": "P", "fp": "Longnotehere", "anchor": "", "k": 0, "text": "question " * 400, "created": "2026-01-01T00:00:00.000Z",
+                     "updated": "2026-01-01T00:00:00.000Z", "status": "answered", "thread": [{"who": "ai", "text": "answer " * 400, "status": "answered", "at": "2026-01-01T00:00:00.000Z"}]}
+        (d / "long.notes.js").write_text("window.NOTES = " + json.dumps({"version": 1, "updated": "2026-01-01T00:00:00.000Z", "notes": [long_note]}) + ";\n")
+        subprocess.run([sys.executable, str(Path(__file__).with_name("add_notes.py")), str(d / "long.html")], check=True)
+        lp = page.context.browser.new_page(viewport={"width": 1000, "height": 600})
+        lp.goto((d / "long.html").as_uri())
+        lp.wait_for_timeout(300)
+        lp.click(".wmn-card >> text=Reply to AI")
+        lp.wait_for_timeout(150)
+        st = lp.evaluate("""() => { const t = document.querySelector('.wmn-card textarea'), c = t.closest('.wmn-card'), r = t.getBoundingClientRect(), k = c.getBoundingClientRect();
+          return [!!c.closest('.wmn-layer'), r.top >= 0 && r.bottom <= innerHeight, k.bottom <= innerHeight]; }""")
+        ok(st == [True, True, True], f"on a deck, Reply to AI on a long note stays in the layer with its text box on screen {st}")
+        lp.fill(".wmn-card textarea", "more")
+        lp.click(".wmn-card >> text=Send", timeout=3000)
+        ok(lp.evaluate("() => wmnNotes().notes[0].thread.at(-1).text") == "more", "and the reply can be sent")
+        lp.close()
+
         # a deck: later content painted over the note, and a box that clips it; Save must still take the click
         (d / "deck.html").write_text("""<!doctype html><html><head><meta charset="utf-8"><title>d</title><style>html,body{overflow:hidden;height:100%;margin:0}
 .s{position:absolute;inset:0;overflow:hidden}dl{position:absolute;left:40px;top:40px;display:grid;grid-template-columns:auto 1fr;margin:0}

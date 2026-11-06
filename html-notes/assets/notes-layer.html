@@ -34,7 +34,7 @@
 .wmn-panel{position:fixed;right:12px;bottom:56px;z-index:2147483001;display:none;box-sizing:border-box;width:min(440px,calc(100vw - 24px));max-height:60vh;overflow:auto;background:#fff;border:1px solid var(--wmn-rule);box-shadow:0 2px 8px rgba(0,0,0,.12);padding:10px}
 .wmn-panel .wmn-card{margin:0 0 10px}
 .wmn-old{font-size:.75rem;color:var(--wmn-ink2);margin-bottom:4px}
-.wmn-card.wmn-float{position:fixed;z-index:2147483002;box-sizing:border-box;width:min(560px,calc(100vw - 24px));margin:0;box-shadow:0 4px 16px rgba(0,0,0,.25)}
+.wmn-card.wmn-float{position:fixed;z-index:2147483002;box-sizing:border-box;width:min(560px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto;margin:0;box-shadow:0 4px 16px rgba(0,0,0,.25)}
 .wmn-layer>.wmn-card{position:fixed;left:0;top:0;box-sizing:border-box;width:min(480px,calc(100vw - 24px));max-height:60vh;overflow:auto;margin:0;box-shadow:0 2px 10px rgba(0,0,0,.22)}
 .wmn-layer>.wmn-card.wmn-away{display:none}
 .wmn-layer>.wmn-card{cursor:move}
@@ -425,10 +425,14 @@ function edit(n,c,isNew,turn){
   c.classList.remove('wmn-closed');
   c.replaceChildren(...quoteOf(n),...(turn?thread(turns(n),turn):[]),ta,m);
   if(DECK) layout();
+  /* A card in the deck layer already floats above the page; a long one scrolls inside itself, so show its end (the
+     text box and buttons). Lifting it out as wmn-float would leave a card taller than the window that cannot scroll. */
+  const inLayer=layer.contains(c);
+  if(inLayer) c.scrollTop=c.scrollHeight;
   const B=getComputedStyle(document.body).overflow, H=getComputedStyle(document.documentElement).overflow;
-  if(B!=='hidden'&&H!=='hidden') c.scrollIntoView({block:'nearest'});
+  if(!inLayer&&B!=='hidden'&&H!=='hidden') c.scrollIntoView({block:'nearest'});
   const r0=ok.getBoundingClientRect(), hit=document.elementFromPoint(r0.left+r0.width/2,r0.top+r0.height/2);
-  if(!hit||!c.contains(hit)){
+  if(!inLayer&&(!hit||!c.contains(hit))){
     mark=document.createComment('wmn-note'); c.before(mark); c.classList.add('wmn-float'); document.body.append(c);
     const r=(where.get(n.id)||mark.parentElement).getBoundingClientRect();
     c.style.left=Math.max(12,Math.min(r.left,innerWidth-c.offsetWidth-12))+'px';
