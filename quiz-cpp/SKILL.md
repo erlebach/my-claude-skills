@@ -77,6 +77,7 @@ e) It prints 3, because it now refers to the last original element.
 
 ## Item Quality Rules
 
+- **Plain technical English, always.** **REQUIRED SUB-SKILL:** invoke `plain-technical-english` before writing or revising any item, and follow it. It governs every word a student or the author reads: stems, choices, key rationales, `facts` lines, and the summary you give the author. It does not touch code, the `*` key marker, or the output format, which the LaTeX pipeline fixes. Plain is not vague: keep the exact C++ term, define it on first use if the course has not taught it, and keep every number and identifier. A tier agent does not inherit this skill from you: its prompt must tell it to invoke `plain-technical-english` first, and must copy the skill's Words and Sentences rules word for word. Do not skip this because the items are short, the round is late, or the checker found no fault: a wording fault survives a correctness pass because nothing is wrong.
 - **Standalone: knowledge of C++ and reasoning, never memory of an example.** A student must be able to answer from the item itself plus the C++ rules the course teaches. Every fact the answer needs is either such a rule or printed in the item. Never require the student to remember a specific demo, slide or homework example — its class names, its values, its story, or a line it showed that the item does not. Supplied homework text or images are illustrative context only.
 
     Code in a stem must contain whatever triggers the behaviour asked about. Quiz 2 (Oct) item 14 showed `class Grid1D : public std::vector<double>` with only a constructor and asked what problem the design creates; the problem — a `g.resize(8)` that breaks the grid's invariant — lived only in the demo, so the item tested recall of the demo, not reasoning. Item 21 hinged on what `-DNDEBUG` does, which the stem never mentioned and the course said once. A defined course term (a named rule, a gate of a taught checklist) is knowledge and may be used; a particular example is not.
@@ -479,6 +480,7 @@ checker.
 | Mistake | Fix |
 |---|---|
 | Generating before reading the course profile | Profile first; its spec overrides these defaults |
+| Writing items, or dispatching a tier agent, without `plain-technical-english` | Invoke it first; paste its Words and Sentences rules into every tier prompt |
 | Giving the review subagent the key, or "just a hint" | Key-blind means blind; re-run from a fresh agent if contaminated |
 | Emitting the quiz only in chat | Always write the round's files to the build folder |
 | Inventing the folder timestamp | Take it from `date` |
