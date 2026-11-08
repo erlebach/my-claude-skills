@@ -31,6 +31,16 @@ Detailed prompt templates in `./commands/`. In Pi, these are slash commands (`/d
 
 ## Workflow
 
+### 0. Prose: plain technical English, always
+
+**REQUIRED SUB-SKILL:** Before writing any text that a reader will see on the page, invoke the `plain-technical-english` skill and follow it. This is not optional and does not depend on the audience, the aesthetic, or the diagram type.
+
+It applies to every piece of prose the page carries: the title and lead paragraph, takeaways and callouts, card text, table cells and headers, figure captions, Mermaid node and edge labels, code-block headers, and the summary you give the user afterwards. Diagrams, code snippets and measured output are not prose and are left as they are.
+
+Why: an explainer is read alone, with no author in the room. A word the reader cannot look up, a metaphor that needs decoding, or a sentence that does two jobs is a defect in the page, however good the layout is. Plain is not vague: keep the number, the file path, the exact term of art, and define the term on first use.
+
+Do not skip this because the page is "mostly diagrams", because the text is short, or because the request was urgent. If the skill is unavailable in the current environment, apply its base rules yourself: one idea per sentence, active voice, the common word over the showy one, numbers and names kept exact, requirements stated with MUST / SHOULD / MAY.
+
 ### 1. Think (5 seconds, not 5 minutes)
 
 Before writing HTML, commit to a direction. Don't default to "dark theme with blue accents" every time.
@@ -403,6 +413,7 @@ Before delivering, verify:
 - **No overflow**: Resize the browser to different widths. No content should clip or escape its container. Every grid and flex child needs `min-width: 0`. Side-by-side panels need `overflow-wrap: break-word`. Never use `display: flex` on `<li>` for marker characters — it creates anonymous flex items that can't shrink, causing lines with many inline `<code>` badges to overflow. Use absolute positioning for markers instead. See the Overflow Protection section in `./references/css-patterns.md`.
 - **Mermaid zoom controls**: Every `.mermaid-wrap` container must have zoom controls (+/−/reset/expand buttons), Ctrl/Cmd+scroll zoom, click-and-drag panning, and click-to-expand (clicking without dragging opens the diagram full-size in a new tab). The expand button (⛶) provides the same functionality. See `./references/css-patterns.md` for the full pattern including the `openMermaidInNewTab()` function.
 - **File opens cleanly**: No console errors, no broken font loads, no layout shifts.
+- **Plain technical English**: Reread every visible sentence once for wording alone, separately from the technical check, against the `plain-technical-english` skill. Faults of this kind survive a correctness pass because nothing is wrong.
 
 ## Anti-Patterns (AI Slop)
 
