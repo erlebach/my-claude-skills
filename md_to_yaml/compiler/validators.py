@@ -167,6 +167,47 @@ def _check_diagram_sources(slides: list) -> list[str]:
     return warnings
 
 
+def _check_table_shape(slides: list) -> list[str]:
+    """Each table row must be as wide as the header row (colspan counted).
+
+    Added 2026-11-16: a header written as `[Frauds in 5,000 payments, …]` in a
+    YAML flow list splits at the comma into "Frauds in 5" and "000 payments";
+    the table then rendered with shifted headings and an empty column, and
+    nothing reported it. A cell that starts with three digits after such a
+    split gets a hint.
+    """
+    import re
+    errors: list[str] = []
+    split_hint = re.compile(r'^\d{3}(\D|$)')
+    for i, slide in enumerate(slides, start=1):
+        if slide.layout != 'table':
+            continue
+        headers = list(getattr(slide, 'headers', None) or [])
+        rows = list(getattr(slide, 'rows', None) or [])
+
+        def width(row):
+            return sum(getattr(c, 'colspan', 1) if not isinstance(c, str) else 1 for c in row)
+
+        def text(c):
+            return c if isinstance(c, str) else getattr(c, 'text', '')
+
+        if not headers:
+            continue
+        cells = [text(h) for h in headers] + [text(c) for r in rows for c in r]
+        hint = ''
+        if any(split_hint.match(str(c).strip()) for c in cells):
+            hint = (' A cell starts with three digits: is a number with a thousands comma '
+                    '(5,000) unquoted in a [ … ] list? Quote it: "5,000".')
+        for j, row in enumerate(rows, start=1):
+            if width(row) != len(headers):
+                errors.append(
+                    f"**ERROR** slide {i}: table row {j} has {width(row)} cells, "
+                    f"the header has {len(headers)}.{hint}"
+                )
+                break
+    return errors
+
+
 def validate_deck(deck: Deck, base_dir: str = '.') -> tuple[list[str], list[str]]:
     """Run all pre-render validators and return (errors, warnings).
 
@@ -174,7 +215,7 @@ def validate_deck(deck: Deck, base_dir: str = '.') -> tuple[list[str], list[str]
     ``base_dir`` is used to resolve relative image src paths.
     """
     slides = deck.slides
-    errors = _check_alt_text(slides) + _check_contrast(deck.metadata)
+    errors = _check_alt_text(slides) + _check_contrast(deck.metadata) + _check_table_shape(slides)
     warnings = (
         _check_layout_variety(slides)
         + _check_bullet_limits(slides)
