@@ -10,6 +10,8 @@ the browser's copy by note id and timestamp, and this script sets both correctly
     resolve_notes.py page.html mark ID fixed|answered|declined "what was changed, or the answer"   # adds the AI's turn
     resolve_notes.py page.html delete ID [ID ...] # only when the reader asks for it
 
+ID is a note's id (n...) or its number as the card shows it: 3 or "#3" (quote it: in a shell, # starts a comment).
+
 page.html may also be the notes file itself (page.notes.js).
 """
 import argparse
@@ -37,7 +39,21 @@ def load(path):
     i, j = t.find("{"), t.rfind("}")
     data = json.loads(t[i:j + 1]) if i >= 0 else {"version": 1, "updated": "", "notes": []}
     head = t.split("\n", 1)[0] if t.startswith("//") else f"// Personal notes for {path.name[:-9]}.html. Written by the page; edit with care."
+    number_all(data)
     return data, head
+
+
+def number_all(data):
+    """Give every item a short number, as the page does (numberAll in notes-layer.html): kept for good, never reused;
+    a missing or duplicate number is replaced in creation order with one more than the highest ever given."""
+    top = max([data.get("lastNum") or 0] + [n.get("num") or 0 for n in data["notes"]])
+    seen = set()
+    for n in sorted(data["notes"], key=lambda n: (n.get("created") or "") + n["id"]):
+        if not n.get("num") or n["num"] in seen:
+            top += 1
+            n["num"] = top
+        seen.add(n["num"])
+    data["lastNum"] = top
 
 
 def save(path, data, head):
@@ -46,10 +62,11 @@ def save(path, data, head):
 
 
 def find(data, nid):
+    k = nid.lstrip("#")
     for n in data["notes"]:
-        if n["id"] == nid:
+        if n["id"] == nid or (k.isdigit() and n.get("num") == int(k)):
             return n
-    sys.exit(f"no note with id {nid}")
+    sys.exit(f"no note with id or number {nid}")
 
 
 def turns(n):
@@ -66,7 +83,7 @@ def turns(n):
 def show(n):
     kind = "strike" if n.get("strike") else ("highlight + note" if n.get("text") else "highlight") if n.get("hl") else "note"
     state = "FOR AI" if n.get("ai") else (n.get("status") or "open").upper()
-    print(f"== {n['id']}  [{kind}, {state}]  near #{n.get('anchor') or '?'}")
+    print(f"== #{n.get('num', '?')}  {n['id']}  created {(n.get('created') or '?')[:16].replace('T', ' ')}  [{kind}, {state}]  near #{n.get('anchor') or '?'}")
     # the setting of the conversation, like a system prompt: where the note sits in the page
     print("   context (the setting for the whole conversation):")
     if n.get("sec"):
@@ -131,11 +148,12 @@ def main():
         for k in ("ai", "was", "reviewed", "collapsed"):
             n.pop(k, None)
         n.update(status=a.status, resolution=a.resolution.strip(), resolved=t, updated=t)
-        print(f"{a.id}: {a.status}")
+        print(f"#{n['num']} {n['id']}: {a.status}")
     elif a.cmd == "delete":
         for i in a.ids:
-            data["notes"].remove(find(data, i))
-            data.setdefault("deleted", []).append(i)
+            n = find(data, i)
+            data["notes"].remove(n)
+            data.setdefault("deleted", []).append(n["id"])
         print(f"deleted {len(a.ids)}")
     save(path, data, head)
 

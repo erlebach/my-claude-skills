@@ -38,6 +38,7 @@
 .wmn-layer>.wmn-card{position:fixed;left:0;top:0;box-sizing:border-box;width:min(480px,calc(100vw - 24px));max-height:60vh;overflow:auto;margin:0;box-shadow:0 2px 10px rgba(0,0,0,.22)}
 .wmn-layer>.wmn-card.wmn-away{display:none}
 .wmn-layer>.wmn-card{cursor:move}
+.wmn-grip{cursor:move;user-select:none;-webkit-user-select:none;touch-action:none;font-size:.75rem;color:var(--wmn-ink2);margin-bottom:4px}
 .wmn-layer>.wmn-card.wmn-peek{visibility:hidden}
 .wmn-mark{position:fixed;display:none;z-index:2147483000;width:22px;height:22px;border-radius:50%;background:#E8590C;color:#fff;font:600 16px/22px "Avenir Next",Avenir,Helvetica,Arial,sans-serif;text-align:center;box-shadow:0 0 0 3px rgba(232,89,12,.3);pointer-events:none}
 .wmn-layer :is(.wmn-text,.wmn-reply,.wmn-quote,.wmn-old,textarea){cursor:auto}
@@ -49,6 +50,7 @@ body.wmn-drag,body.wmn-drag *{user-select:none!important;-webkit-user-select:non
 .wmn-preview{flex:1;min-width:8em;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:pointer;color:#1A1A1A}
 .wmn-grow{flex:1}
 .wmn-count{font-size:.75rem;color:var(--wmn-ink2)}
+.wmn-num{font-size:.75rem;font-weight:600;color:var(--wmn-ink2);cursor:copy}
 .wmn-ico{font-family:var(--wmn-sans);font-size:.85rem;line-height:1.2;background:none;border:1px solid transparent;border-radius:3px;padding:1px 5px;margin:0;cursor:pointer;color:var(--wmn-ink)}
 .wmn-ico:hover{border-color:var(--wmn-rule);background:#fff}
 .wmn-ico.on{background:#3B5BA9;border-color:#3B5BA9}
@@ -90,7 +92,7 @@ body.wmn-hide-done .wmn-card.wmn-done:not(.wmn-panel .wmn-card){display:none}
 'use strict';
 const FILE='__NOTES_FILE__', HTML='__HTML_FILE__';
 const KEY=location.pathname, DIRKEY='dir:'+KEY.replace(/[^/]*$/,''), LS='wmn-pending:'+KEY, LSHIDE='wmn-hide:'+KEY, LSDONE='wmn-hide-done:'+KEY, LSKEYS='wmn-keys:'+KEY, LSBAR='wmn-bar-off:'+KEY, LSNOASK='wmn-no-ask:'+KEY;
-const BLOCKS='p,li,dt,dd,h1,h2,h3,h4,h5,h6,.eq,figure,table,pre,blockquote,.note,.diffnote,.widget';
+const BLOCKS='p,li,dt,dd,h1,h2,h3,h4,h5,h6,.eq,figure,table,pre,blockquote,.note,.diffnote,.widget,[data-note-block]';
 const OURS='.wmn-mark,.wmn-layer,.wmn-card,.wmn-bar,.wmn-panel,.wmn-banner,.wmn-add,.wmn-pop,.wmn-toast,.wmn-pad';
 /* A notes file belongs to one page, and only add_notes.py links them. This page must be the one the layer was made for,
    and must load no other notes file; otherwise it stays read-only, so it can never write over another page's notes. */
@@ -305,7 +307,7 @@ function layout(){
     c.classList.toggle('wmn-peek',c.dataset.id===peekId);
     if(seen) on.push([c,r]);
   }
-  const noteOf=c=>data.notes.find(n=>n.id===c.dataset.id);
+  const noteOf=c=>c.wmnNote||data.notes.find(n=>n.id===c.dataset.id);
   on.sort((x,y)=>(noteOf(x[0])||{}).pos&&!(noteOf(y[0])||{}).pos?-1:!(noteOf(x[0])||{}).pos&&(noteOf(y[0])||{}).pos?1:x[1].bottom-y[1].bottom);
   for(const [c,r] of on){
     const w=c.offsetWidth, h=c.offsetHeight, n=noteOf(c), pos=n&&n.pos;
@@ -327,7 +329,7 @@ function dragging(){
   const TEXT='button,textarea,a,select,input,.wmn-text,.wmn-reply,.wmn-quote,.wmn-old';
   layer.addEventListener('pointerdown',e=>{
     if(e.button||inside(e.target,TEXT)) return;
-    const c=e.target.closest('.wmn-card'), n=c&&data.notes.find(x=>x.id===c.dataset.id); if(!n) return;
+    const c=e.target.closest('.wmn-card'), n=c&&(c.wmnNote||data.notes.find(x=>x.id===c.dataset.id)); if(!n) return;
     const r=c.getBoundingClientRect(), dx=e.clientX-r.left, dy=e.clientY-r.top, x0=e.clientX, y0=e.clientY, ta=c.querySelector('textarea');
     let moved=false; document.body.classList.add('wmn-drag');
     const mv=v=>{ if(!moved&&Math.hypot(v.clientX-x0,v.clientY-y0)<4) return; moved=true; n.pos={x:+((v.clientX-dx)/innerWidth).toFixed(4),y:+((v.clientY-dy)/innerHeight).toFixed(4)}; };
@@ -337,7 +339,7 @@ function dragging(){
       if(!moved) return;
       const eat=v=>{ v.stopPropagation(); v.preventDefault(); };      // the click that ends a drag must not open or close the note
       layer.addEventListener('click',eat,true); setTimeout(()=>layer.removeEventListener('click',eat,true),50);
-      n.updated=now(); changed();
+      if(data.notes.includes(n)){ n.updated=now(); changed(); }     // a new note keeps its place and is saved with it
     };
     window.addEventListener('pointermove',mv); window.addEventListener('pointerup',up);
   });
@@ -346,6 +348,17 @@ function dragging(){
     const c=e.target.closest('.wmn-card'), n=c&&data.notes.find(x=>x.id===c.dataset.id);
     if(n&&n.pos){ delete n.pos; n.updated=now(); changed(); }
   });
+}
+/* A note open for editing that floats above the page (wmn-float) moves by its grip row, for as long as it is open */
+function floatDrag(){
+  document.addEventListener('pointerdown',e=>{
+    const g=!e.button&&e.target.closest&&e.target.closest('.wmn-float .wmn-grip'); if(!g) return;
+    const c=g.closest('.wmn-card'), r=c.getBoundingClientRect(), dx=e.clientX-r.left, dy=e.clientY-r.top, ta=c.querySelector('textarea');
+    e.preventDefault(); document.body.classList.add('wmn-drag');
+    const mv=v=>{ c.style.left=Math.max(0,Math.min(v.clientX-dx,innerWidth-60))+'px'; c.style.top=Math.max(0,Math.min(v.clientY-dy,innerHeight-30))+'px'; };
+    const up=()=>{ window.removeEventListener('pointermove',mv); window.removeEventListener('pointerup',up); document.body.classList.remove('wmn-drag'); if(ta&&ta.isConnected) ta.focus({preventScroll:true}); };
+    window.addEventListener('pointermove',mv); window.addEventListener('pointerup',up);
+  },true);
 }
 function after(b,c){   // below the block and its earlier cards; a note on a <dt> goes after its <dd>, so a term and its definition stay together
   if(DECK){ layer.append(c); layout(); return; }
@@ -379,11 +392,23 @@ const ico=(t,label,fn,on)=>{ const b=btn(t,fn); b.className='wmn-ico'+(on?' on':
 function toggle(n){ if(n.collapsed) delete n.collapsed; else n.collapsed=true; n.updated=now(); redraw(n); changed(); }
 /* A card: a header row (open/close, status, tags, icons), then, when open, the conversation and a footer.
    A closed card is the header alone, with the first words of the note. */
+/* Every item gets a short number (#1, #2, ...) the reader can quote to the AI ("address #3"). A number is kept for good and
+   never reused: new items take one more than the highest ever given (data.lastNum). A missing or duplicate number (an old
+   file, or two tabs that numbered at once) is replaced in creation order, the same rule resolve_notes.py uses. */
+function numberAll(){
+  let max=Math.max(data.lastNum||0,...data.notes.map(n=>n.num||0)), ch=false; const seen=new Set();
+  for(const n of [...data.notes].sort((a,b)=>((a.created||'')+a.id)<((b.created||'')+b.id)?-1:1)){
+    if(!n.num||seen.has(n.num)){ n.num=++max; ch=true; } seen.add(n.num); }
+  if(data.lastNum!==max){ data.lastNum=max; ch=true; }
+  return ch;
+}
 function card(n){
   const closed=!!n.collapsed, T=turns(n);
   const c=el('div','wmn-card'+(n.ai?' wmn-queued':n.status?' wmn-done':'')+(closed?' wmn-closed':'')); c.dataset.id=n.id;
   const h=el('div','wmn-head');
   h.append(ico(closed?'▸':'▾',closed?'Open note':'Close note',()=>toggle(n)));
+  if(n.num){ const k=el('span','wmn-num','#'+n.num); k.title='Note #'+n.num+', created '+(n.created||'?').slice(0,16).replace('T',' ')+' (id '+n.id+'). Tell the AI "#'+n.num+'". Click to copy the id.';
+    k.onclick=()=>{ (navigator.clipboard?navigator.clipboard.writeText(n.id):Promise.reject()).then(()=>say('Copied id '+n.id),()=>say('Note #'+n.num+', id '+n.id)); }; h.append(k); }
   if(n.strike) h.append(el('span','wmn-tag strike','Delete'));
   if(n.ai) h.append(el('span','wmn-tag ai','For AI'));
   if(n.status){
@@ -437,7 +462,7 @@ function edit(n,c,isNew,turn){
       put(card(n)); return;
     }
     if(!t&&!n.hl){ if(isNew) put(); else { put(); del(n,true); } return; }   // an empty note on a highlight keeps the highlight
-    n.text=t; n.updated=now(); if(!data.notes.includes(n)) data.notes.push(n);
+    n.text=t; n.updated=now(); if(!data.notes.includes(n)){ data.notes.push(n); numberAll(); }
     put(shown(n)?card(n):null); changed();
   });
   const no=btn('Cancel',()=>{ put(turn||(data.notes.includes(n)&&shown(n))?card(n):null); },true);
@@ -446,18 +471,19 @@ function edit(n,c,isNew,turn){
   if(forAI){ forAI.title='Save, and queue the note for the AI (Ctrl/Cmd+Shift+Enter)'; m.append(forAI); }
   ok.title='Ctrl/Cmd+Enter'; no.title='Esc'; m.append(no);
   ta.wmnKey=e=>{ if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)) (e.shiftKey&&forAI||ok).click(); if(e.key==='Escape') no.click(); };   // called by wmnGuard
-  c.classList.remove('wmn-closed');
+  c.classList.remove('wmn-closed'); c.wmnNote=n;
+  const grip=el('div','wmn-head wmn-grip','✥ Drag here to move'+(n.num?' · note #'+n.num:''));
   c.replaceChildren(...quoteOf(n),...(turn?thread(turns(n),turn):[]),ta,m);
   if(DECK) layout();
   /* A card in the deck layer already floats above the page; a long one scrolls inside itself, so show its end (the
      text box and buttons). Lifting it out as wmn-float would leave a card taller than the window that cannot scroll. */
   const inLayer=layer.contains(c);
-  if(inLayer) c.scrollTop=c.scrollHeight;
+  if(inLayer){ c.prepend(grip); c.scrollTop=c.scrollHeight; }
   const B=getComputedStyle(document.body).overflow, H=getComputedStyle(document.documentElement).overflow;
   if(!inLayer&&B!=='hidden'&&H!=='hidden') c.scrollIntoView({block:'nearest'});
   const r0=ok.getBoundingClientRect(), hit=document.elementFromPoint(r0.left+r0.width/2,r0.top+r0.height/2);
   if(!inLayer&&(!hit||!c.contains(hit))){
-    mark=document.createComment('wmn-note'); c.before(mark); c.classList.add('wmn-float'); document.body.append(c);
+    mark=document.createComment('wmn-note'); c.before(mark); c.classList.add('wmn-float'); c.prepend(grip); document.body.append(c);
     const r=(where.get(n.id)||mark.parentElement).getBoundingClientRect();
     c.style.left=Math.max(12,Math.min(r.left,innerWidth-c.offsetWidth-12))+'px';
     c.style.top=Math.max(12,Math.min(r.bottom+6,innerHeight-c.offsetHeight-12))+'px';
@@ -681,7 +707,7 @@ function merge(a,b){
   const gone=new Set([...(a.deleted||[]),...(b.deleted||[])]), m=new Map();
   for(const n of [...a.notes,...b.notes]){ if(gone.has(n.id)) continue; const o=m.get(n.id); if(!o||(n.updated||'')>(o.updated||'')) m.set(n.id,n); }
   const h=(a.hiddenAt||'')>=(b.hiddenAt||'')?a:b;           // the hidden-slide list: the newer one, whole
-  return Object.assign({version:1,updated:(a.updated||'')>(b.updated||'')?a.updated:b.updated,deleted:[...gone],
+  return Object.assign({version:1,updated:(a.updated||'')>(b.updated||'')?a.updated:b.updated,deleted:[...gone],lastNum:Math.max(a.lastNum||0,b.lastNum||0),
           notes:[...m.values()].sort((x,y)=>(x.created||'')<(y.created||'')?-1:1)},h.hiddenAt?{hidden:h.hidden||[],hiddenAt:h.hiddenAt}:{});
 }
 function rerender(){
@@ -721,6 +747,7 @@ async function sync(mode){
     const disk=await readDisk();
     if(disk&&disk.updated!==diskStamp){                          // changed elsewhere since this page last read or wrote it
       data=dirty?merge(data,disk):disk;
+      if(numberAll()){ data.updated=now(); dirty=true; }
       markSkip(); rerender();
     }
     if(dirty||!disk||disk.updated!==data.updated){ show('saving'); data.updated=data.updated||now(); await writeDisk(); }
@@ -750,6 +777,7 @@ function init(){
   diskStamp=data.updated||null;                              // what the notes.js <script> read from disk
   const pending=lsGet(LS);
   if(pending){ try{ const p=JSON.parse(pending); if((p.updated||'')>(data.updated||'')){ data=merge(p,data); dirty=true; } }catch(e){} }
+  if(numberAll()){ data.updated=now(); dirty=true; }
   markSkip();
   if(lsGet(LSHIDE)) document.body.classList.add('wmn-hide');
   if(lsGet(LSDONE)) document.body.classList.add('wmn-hide-done');
@@ -761,6 +789,7 @@ function init(){
     dragging();
     document.body.append(markEl);
   }
+  floatDrag();
   const moved=place();
   bar.append(info,navSel,prevB,navPos,nextB,keysBtn,allBtn2,aiInfo,allBtn,clrBtn,doneBtn,orphBtn,hideBtn,syncBtn,status); document.body.append(bar,pnl);
   // the bar spans the window; space at the end of the page, as tall as the bar, keeps the last lines readable
@@ -868,7 +897,7 @@ function init(){
         const box=r.getBoundingClientRect();
         return popup(box.left,box.bottom,null,()=>{
           const n={id:'h'+Date.now().toString(36),tag:b.tagName,fp:fp(b),anchor:anchorOf(b),k:listFor(b).indexOf(b),text:'',hl:Object.assign(h,{color:'y'}),created:now(),updated:now()};
-          context(n,b); data.notes.push(n); where.set(n.id,b); rng.set(n.id,locate(b,n.hl)); paint(); changed(); return n;
+          context(n,b); data.notes.push(n); numberAll(); where.set(n.id,b); rng.set(n.id,locate(b,n.hl)); paint(); changed(); return n;
         });
       }
       const p=document.caretRangeFromPoint&&document.caretRangeFromPoint(e.clientX,e.clientY);

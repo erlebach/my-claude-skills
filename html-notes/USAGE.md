@@ -105,6 +105,7 @@ A slide deck has no room in its layout for notes. On a page that cannot scroll, 
 - Notes that would overlap stack below each other, so a note can sit some way below its paragraph. An orange **+** at the left of a paragraph marks the paragraph of the selected note: the note under the pointer, the note you are writing, or the note you last stepped to.
 - A long note scrolls inside its card.
 - To see what a note covers, slide the note away: drag it by its header row, footer or margins. Dragging across its text still selects the text. The note stays where you put it, also after a reload, because its position is saved in the notes file. Double-click the header row to put it back in its default place.
+- A note that is open for editing has a grip row at the top (✥ Drag here to move). Drag it by that row; the text box keeps your text and the cursor. A new note keeps the place you give it when you save it. On a page that scrolls, an editor that floats above the page moves the same way, until it closes.
 - To look under a note without moving it, move the pointer over it and press H. One note at a time disappears. Press H again, with the pointer anywhere, to bring it back. Hiding a note is temporary: the note stays in the step-through lists, stepping with ↑ or ↓ shows it again, and so does a reload. With the pointer off any note, H goes to the page.
 
 The page decides this by itself when it loads. A note hides what is under it: drag it away, hide it with H, close it, or turn all notes off with N (see [Turn notes off and on](#turn-notes-off-and-on)).
@@ -156,6 +157,7 @@ To remove a strike, click the struck words, then **Remove strike**. 🗑 on the 
 ### The AI queue
 
 - Each note card has a 🤖 (**For AI**) button. The highlight popup has a **For AI** button. A queued card has a blue "For AI" tag.
+- Each note card shows its number (**#3**) in the header. To name notes to the AI, give their numbers: "address #3 and #5". A click on the number copies the note's id. A note keeps its number for good; numbers of deleted notes are not reused.
 - The toolbar shows `For AI: N`, with **All for AI** to queue every open item and **Clear** to empty the queue.
 - When the AI has dealt with an item, the card shows a status and adds the AI's reply as the next turn:
     - **Fixed**: the AI changed the page.
