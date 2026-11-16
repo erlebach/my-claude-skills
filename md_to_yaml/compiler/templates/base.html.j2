@@ -1042,6 +1042,59 @@
       min-height: 0;
       height: 100%;
     }
+    /* Figure with a body (2026-11-16). Without this the image kept the fixed
+       576/612px caps, so a figure plus a title plus one line of text painted
+       past its panel and over the text. Same idea as the pinned panel: the
+       content area is a column of the space below the title; the body keeps its
+       natural height and the figure panel takes the rest, with the media fitted
+       to it (max-height:100% of a definite flex size). */
+    .slide-figure.figure-with-body .slide-content-area {
+      min-height: 0;
+      justify-content: flex-start;
+    }
+    /* The figure keeps at least 60 % of the content height. If the body then
+       does not fit, autofit zooms the content area (text and figure together)
+       instead of squeezing the figure to a strip. */
+    .slide-figure.figure-with-body .slide-content-area > .figure-container:has(.figure-asset-wrap--fill) {
+      flex: 1 1 0;
+      min-height: 60%;
+    }
+    .slide-figure.figure-with-body .figure-container:has(.figure-asset-wrap--fill) > figure {
+      height: 100%;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .slide-figure.figure-with-body .figure-asset-wrap--fill {
+      flex: 1 1 0;
+      min-height: 0;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      padding: 12px 20px;
+    }
+    .slide-figure.figure-with-body .figure-asset-wrap--fill .figure-asset {
+      flex: 1 1 0;
+      min-height: 0;
+    }
+    .slide-figure.figure-with-body .figure-asset-wrap--fill .figure-asset > img,
+    .slide-figure.figure-with-body .figure-asset-wrap--fill .figure-asset img,
+    .slide-figure.figure-with-body .figure-asset-wrap--fill .figure-asset .diagram-container svg {
+      width: auto;
+      height: auto;
+      max-width: 100%;
+      max-height: 100%;
+      transform: none;
+      zoom: 1;
+    }
+    .slide-figure.figure-with-body .figure-asset-wrap--fill .figure-asset .diagram-container {
+      min-height: 0;
+      height: 100%;
+    }
+    .slide-figure.figure-with-body .slide-content-area > .slide-body {
+      flex: 0 0 auto;
+      margin-top: 12px;
+    }
     /* Single diagram slide: diagram dominates */
     .diagram-only .diagram-container { max-height: 576px; }
     .diagram-only .diagram-container svg { max-height: 540px; }
@@ -1433,7 +1486,7 @@
     {% set rendered_fw_right_body = s.rendered_fw_right_body %}
     {% set title_has_math = s.title_has_math %}
     {% set extra_class = '' %}
-    {% if slide.layout == 'figure' and not slide.body %}{% set extra_class = ' figure-only' %}{% endif %}
+    {% if slide.layout == 'figure' and not slide.body %}{% set extra_class = ' figure-only' %}{% endif %}{% if slide.layout == 'figure' and slide.body %}{% set extra_class = ' figure-with-body' %}{% endif %}
     {% if slide.layout == 'diagram' and not slide.body %}{% set extra_class = ' diagram-only' %}{% endif %}
     {% if slide.layout == 'code' and s.rendered_body %}{% set extra_class = extra_class ~ ' code-with-body' %}{% endif %}
     {% if title_has_math %}{% set extra_class = extra_class ~ ' slide-heading-math' %}{% endif %}
