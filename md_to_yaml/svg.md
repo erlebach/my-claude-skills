@@ -100,6 +100,19 @@ Define a marker in `<defs>` and reference it on `<line>` elements:
 - **foreignObject + HTML:** `foreignObject`, `div`, `span`, `p`
 - **MathML:** `math`, `mrow`, `mi`, `mo`, `mn`, `msup`, `msub`, `msubsup`, `mfrac`, `mspace`, `mtext`, `mover`, `munder`, `munderover`, `mtable`, `mtr`, `mtd`, `ms`, `mstyle`, `merror`, `mpadded`, `mphantom`
 - **Global attrs (`*`):** `id`, `class`, `style`, `transform`, `xmlns`, `marker-end`, `marker-start`
-- **CSS properties (via `CSSSanitizer`):** `width`, `height`, `display`, `flex-direction`, `align-items`, `justify-content`, `box-sizing`, `color`, `background`, `background-color`, `font-size`, `font-weight`, `font-family`, `text-align`, `line-height`, `letter-spacing`, `margin*`, `padding*`, `border`, `border-radius`, `opacity`, `overflow`, `vertical-align`, `white-space`, `word-break`
+- **CSS properties (via `CSSSanitizer`):** `width`, `height`, `display`, `flex-direction`, `align-items`, `justify-content`, `box-sizing`, `color`, `background`, `background-color`, `font-size`, `font-weight`, `font-family`, `text-align`, `line-height`, `letter-spacing`, `margin*`, `padding*`, `border`, `border-radius`, `opacity`, `overflow`, `vertical-align`, `white-space`, `word-break`, and the SVG paint properties `fill`, `stroke`, `stroke-width`, `stroke-dasharray`, `stroke-dashoffset`, `stroke-linecap`, `stroke-linejoin`, `stroke-opacity`, `fill-opacity`, `text-anchor`, `dominant-baseline` (2026-11-16)
+- **Paint attributes on shapes and text (2026-11-16):** `opacity`, `fill-opacity`, `stroke-opacity`, `stroke-dasharray`, `stroke-dashoffset`, `stroke-linecap`, `stroke-linejoin`, `vector-effect`, `shape-rendering`; on `svg`, `g`, `text`, `tspan` also `font-weight`, `font-family`, `font-style`, `letter-spacing`, `dx`, `dy`, `stroke`, `stroke-width`, `paint-order`, `fill`
 
 To add a missing tag or property, edit `ALLOWED_SVG_TAGS`, `ALLOWED_SVG_ATTRS`, or `_CSS_SANITIZER` in `compiler/renderers/svg.py`.
+
+## `<style>` blocks and CSS variables (2026-11-16)
+
+An SVG drawn by a web page often colors its shapes through a `<style>` block, classes and CSS custom properties (`fill: var(--ink)`). bleach removes `<style>`, so such a figure used to lose every color (bars turned black) and every dashed line, silently.
+
+The compiler now keeps the SVG's own `<style>` blocks:
+
+- **Cleaned:** at-rules (`@import`, `@font-face`, `@media`) and any rule with an external `url(…)`, `expression(…)` or `javascript:` are dropped. Local references such as `fill: url(#gradient)` are kept.
+- **Scoped:** the root `<svg>` gets the id `<slide-id>-svg`, and every selector is prefixed with it. A selector whose first part names the root itself (`:root`, `svg`, or a class on the root, as in `.fig text`) also gets a `#id:is(…)` form, so custom properties declared on the root class still apply. An inlined figure cannot change the rest of the deck.
+- **Reported:** after cleaning, the compiler prints `WARNING <slide>: the SVG sanitizer removed …` with the tags and attributes it dropped (scripts, event handlers, `filter`, …). Nothing is lost silently.
+
+If a figure still renders wrongly, render it to a PNG (headless Chromium, twice the size) and put the PNG on the slide, with the SVG's description as `alt_text`.

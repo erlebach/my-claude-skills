@@ -2,6 +2,14 @@
 
 Chronological log of features, bug fixes, and architectural decisions.
 
+## 2026-11-16 — SVG figures keep their styles; figure slides with a body fit
+
+Found while making the CAP5771 Module 7 deck, whose figures come from explainer pages.
+
+- **SVG `<style>` kept, cleaned and scoped** (`compiler/renderers/svg.py`). bleach removed `<style>`, CSS `fill`/`stroke` in `style=`, and `stroke-dasharray`/`font-weight`, so a page-drawn SVG rendered with black bars, solid lines and plain labels, with no message. Now: the `<style>` blocks are extracted before bleach, cleaned with tinycss2 (at-rules and external `url()` dropped, `url(#…)` kept), scoped to `#<slide-id>-svg` (with a `#id:is(first)` form for selectors that name the root), and put back. SVG paint properties are allowed in `style=`, and paint attributes on shapes and text. The compiler prints a warning naming whatever the sanitizer still removes.
+- **Figure slides with a body** (`base.html.j2`). Only figure-only slides had the pinned panel; with a body the image kept the fixed 576/612 px caps and painted over the body text (66–131 px on 1280×720). New class `figure-with-body`: the content area is a column, the body keeps its height, the figure panel takes the rest (`min-height: 60%`), and the media fits it (`max-height: 100%`, no zoom). Tested on a 4-slide deck (SVG with style + body, PNG + body, figure-only, two-line title + two-item list); a 39-slide deck with figure-only slides gives the same autofit report as before.
+- **Upstream:** the project copy under `~/src/2026/claude-code/n8n/md_to_yaml/.claude/skills/md_to_yaml` is older than this skill copy (base.html.j2 and engine.py differ from before this change); port both changes when the two are synced.
+
 ## 2026-08-26 — Autofit fits title and content separately; limits move to the deck front matter
 
 - **`autofitAll()` in `base.html.j2` rewritten.** The old routine zoomed the whole `<section>` by a

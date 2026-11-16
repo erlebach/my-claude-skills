@@ -49,3 +49,4 @@ images:
 - Use `layout: figure` + `src: <figures_dir>/filename.ext` for **all** figures — raster, SVG, and Mermaid.
 - Do **not** use inline `layout: diagram` body for new diagrams — write the source to a `.mmd` file in step 10b instead. (`layout: diagram` with inline body remains valid for backward compatibility only.)
 - `alt_text` on each figure slide must match `captions.yaml`.
+- **A figure slide may have a body** (one or two short lines below the figure). With a body, the slide uses a pinned column (2026-11-16): the body keeps its natural height and the figure panel takes the rest of the space below the title, at least 60 % of it; if the body does not fit, autofit shrinks the content area. Before this, an image with a body kept a fixed 576/612 px cap and painted over the text. A figure-only slide (no body) still gives the figure the most room; prefer it when the message fits in a one-line title.
