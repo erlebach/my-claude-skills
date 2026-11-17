@@ -29,4 +29,6 @@ The explainer build scripts draw every figure from the numbers script, so export
 - Deck source: `build/module-NN/<unit>-explanatory-opus55-<YYYYMMDD>.yaml`. Output: `course_site/static/kits/module-NN/<unit>-slides.html`; set `materials.slides` in `unit.yaml`.
 - Compile with `--embed-images --no-notes` (no speaker notes reach students), from a virtual environment with the md_to_yaml `requirements.txt` (the system Python lacks `markdown` and `tinycss2`).
 - Validate, fix any run of 3 or more slides with the same layout, and run `check_autofit.py`: no slide may hit the floor, and none may cross an edge. Look at a screenshot of the fullest slides.
+- Write a dollar amount as `\$` (`\\$` in a YAML string in double quotes). A plain `$` starts a formula, so two amounts in one line become math (Module 2, 2026-11-16).
+- **Put the message of a figure slide in its title, with no body text.** Body text leaves the figure little room; move its facts to the slides next to it (Module 2, 2026-11-16).
 - Every number comes from the notes or the numbers script. The slides are part of the second source check (`verification.md` §3c).
