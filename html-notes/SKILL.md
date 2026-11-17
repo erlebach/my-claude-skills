@@ -14,6 +14,7 @@ python3 ~/.claude/skills/html-notes/scripts/add_notes.py path/to/page.html
 ```
 
 - Inserts three marked blocks (`<!-- html-notes:…:begin/end -->`): a key guard and a `<script src="page.notes.js">` tag before `</head>`, a banner ("Add notes via Chrome only!") after `<body>`, and the notes code before `</body>`.
+- Takes any number of pages: `add_notes.py a.html b.html` (or a shell glob such as `*.html`) processes each in turn; `--remove` and `--banner` apply to each.
 - Creates an empty `page.notes.js` if there is none. It never overwrites an existing notes file, because that file holds the user's notes.
 - Re-running replaces the marked blocks. That makes it the right step both after the HTML was regenerated (the layer is gone, the notes file is not) and after this skill's layer code was improved.
 - `--all FOLDER` updates every page in the folder and below that has the layer, keeping notes files and banners, and skips `bak` and `backup` folders; add `--check` to only list the out-of-date pages. A page's banner is kept on update.

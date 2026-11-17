@@ -2,6 +2,7 @@
 """Add (or update, or remove) a personal notes layer in a standalone HTML file.
 
     add_notes.py page.html            # add the layer, or replace an older copy of it
+    add_notes.py a.html b.html *.html # the same for every page on the command line
     add_notes.py page.html --remove   # take the layer out again (the notes file is kept)
     add_notes.py page.html --banner "Notes: Chrome only"
     add_notes.py --all FOLDER           # update every page in FOLDER and below that has the layer
@@ -108,7 +109,7 @@ def update_all(folder, check):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("html", type=Path, nargs="?")
+    ap.add_argument("html", type=Path, nargs="*", help="one or more pages")
     ap.add_argument("--remove", action="store_true", help="remove the notes layer")
     ap.add_argument("--banner", default=None, help="banner HTML ('' for no banner); default: keep the page's banner")
     ap.add_argument("--all", type=Path, metavar="FOLDER", help="update every page in FOLDER (and below) that already has the layer")
@@ -117,16 +118,19 @@ def main():
     if a.all:
         return update_all(a.all, a.check)
     if not a.html:
-        ap.error("give a page, or --all FOLDER")
+        ap.error("give one or more pages, or --all FOLDER")
+    for page in a.html:
+        process(page, a.remove, a.banner)
 
-    page = a.html
+
+def process(page, remove, banner):
     html = page.read_text(encoding="utf-8")
     had = "<!-- html-notes:" in html
-    if a.remove:
+    if remove:
         page.write_text(strip(html), encoding="utf-8")
         print(f"notes layer removed from {page}")
         return
-    new = render(html, page, a.banner)
+    new = render(html, page, banner)
     if new == html:
         print(f"notes layer already current in {page}")
     else:
