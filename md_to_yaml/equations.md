@@ -15,6 +15,10 @@
 
 ---
 
+## Dollar amounts
+
+Write a literal dollar sign as `\$`: `- Income \$53,500, purchase \$480.00`. The compiler replaces `\$` with the HTML entity `&#36;` before it searches for math, so the sign never opens or closes a formula. Without the backslash, two amounts in one line become one formula. In a YAML string in double quotes, write `\\$`. In `alt_text`, which is not searched for math, write a plain `$`. The table template turns `\$` back into `$` in the `aria-label` of the caption.
+
 ## YAML quoting and LaTeX
 
 Math strings live inside YAML scalars (slide titles, captions, **`table`** `headers` / `rows` cells, flow-style list items). **Single-quoted** and **double-quoted** rules differ; mistakes strip or corrupt backslashes before LaTeX reaches the compiler.

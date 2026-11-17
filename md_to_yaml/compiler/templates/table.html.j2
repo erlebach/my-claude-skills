@@ -1,6 +1,6 @@
 {% include 'slide_heading_h2.html.j2' %}
 <div class="slide-content-area">
-<div class="table-scroll-wrapper" tabindex="0" role="region" aria-label="{% if slide.caption %}{{ slide.caption | e }}{% else %}Data table{% endif %}">
+<div class="table-scroll-wrapper" tabindex="0" role="region" aria-label="{% if slide.caption %}{{ slide.caption | replace('\\$', '$') | e }}{% else %}Data table{% endif %}">
   <table>
     {% if slide.caption %}
     <caption class="table-caption">

@@ -105,6 +105,12 @@ def extract_and_render_math(text: str, macros: dict[str, str] | None = None) -> 
     """
     _macros = macros or {}
 
+    # A literal dollar sign is written \$ (for example \$53,500). Replace it with
+    # its HTML entity before the search for math, so that it never opens or
+    # closes a formula. Markdown passes the entity through, and the browser
+    # shows "$". (Added 2026-11-16: two amounts in one bullet became one formula.)
+    text = text.replace('\\$', '&#36;')
+
     # Display math: $$...$$ (may span multiple lines, non-greedy)
     def replace_display(match: re.Match) -> str:
         tex = match.group(1)
